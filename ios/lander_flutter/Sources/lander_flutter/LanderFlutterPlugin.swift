@@ -16,7 +16,7 @@ public final class LanderFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHa
   private var sink: FlutterEventSink?
   private var pending: [String] = []
 
-  private let io = DispatchQueue(label: "link.lndr.lander_flutter.storage")
+  private let io = DispatchQueue(label: "link.lander.lander_flutter.storage")
   private static let keyPattern = try! NSRegularExpression(pattern: "^[a-z0-9_]{1,64}$")
 
   public static func register(with registrar: FlutterPluginRegistrar) {

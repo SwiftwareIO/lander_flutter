@@ -36,7 +36,7 @@ abstract final class Lander {
   /// Secret keys are rejected because anything shipped in an app is public.
   static Future<void> initialize({
     required String apiKey,
-    String baseUrl = 'https://api.lndr.link',
+    String baseUrl = 'https://api.lander.link',
     bool enableLogging = false,
   }) {
     if (_client != null) {

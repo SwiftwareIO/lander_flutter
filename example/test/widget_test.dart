@@ -12,7 +12,7 @@ void main() {
 
   testWidgets('a resolved link route opens the product screen', (tester) async {
     final link = LanderLink(
-      uri: Uri.parse('https://acme.lndr.link/p-123'),
+      uri: Uri.parse('https://acme.lander.link/p-123'),
       linkId: '6f1c1f9e-8a2b-4c3d-9e4f-5a6b7c8d9e0f',
       path: '/product/123',
       params: {'productId': '123'},

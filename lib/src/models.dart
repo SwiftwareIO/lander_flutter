@@ -84,7 +84,7 @@ class LanderLink {
   /// Lander link ID, or null when the link is not known to Lander.
   final String? linkId;
 
-  /// The canonical short link, for example `https://acme.lndr.link/p-123`.
+  /// The canonical short link, for example `https://acme.lander.link/p-123`.
   final String? url;
 
   /// The in app route configured on the link, for example `/product/123`.
@@ -191,7 +191,7 @@ class LanderShortLink {
 
   final String id;
 
-  /// The shareable URL, for example `https://acme.lndr.link/x7Kp2Qa`.
+  /// The shareable URL, for example `https://acme.lander.link/x7Kp2Qa`.
   final Uri url;
   final String domain;
   final String slug;

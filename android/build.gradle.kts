@@ -1,4 +1,4 @@
-group = "link.lndr.lander_flutter"
+group = "link.lander.lander_flutter"
 version = "0.2.0"
 
 buildscript {
@@ -26,7 +26,7 @@ plugins {
 }
 
 android {
-    namespace = "link.lndr.lander_flutter"
+    namespace = "link.lander.lander_flutter"
 
     compileSdk = 36
 

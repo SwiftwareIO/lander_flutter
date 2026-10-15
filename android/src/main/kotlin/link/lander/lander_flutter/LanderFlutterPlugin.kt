@@ -1,4 +1,4 @@
-package link.lndr.lander_flutter
+package link.lander.lander_flutter
 
 import android.app.Activity
 import android.content.Context

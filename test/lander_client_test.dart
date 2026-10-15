@@ -128,7 +128,7 @@ void main() {
       expect(link?.isDeferred, isTrue);
       expect(link?.path, '/product/123');
       expect(link?.confidence, LanderConfidence.probabilistic);
-      expect(link?.uri.toString(), 'https://acme.lndr.link/p-123');
+      expect(link?.uri.toString(), 'https://acme.lander.link/p-123');
     });
   });
 
@@ -154,7 +154,7 @@ void main() {
       expect(link.method, 'install_referrer');
       expect(link.route, '/sale/spring');
       expect(link.params, {'discount': '15'});
-      expect(link.uri.toString(), 'https://acme.lndr.link/spring-sale');
+      expect(link.uri.toString(), 'https://acme.lander.link/spring-sale');
     });
 
     test('is delivered exactly once, through onDeepLink when nobody asks getInitialLink', () async {
@@ -183,7 +183,7 @@ void main() {
         '/v1/sdk/init': (r) => json({'installId': r.body['installId'], 'deferredLink': deferredSpring}),
         '/v1/sdk/resolve': (r) => json(resolvedP123),
       });
-      final c = client(FakePlatform(initialLink: 'https://acme.lndr.link/p-123'), api);
+      final c = client(FakePlatform(initialLink: 'https://acme.lander.link/p-123'), api);
       final got = <LanderLink>[];
       c.dispatcher.stream.listen(got.add);
       await started(c);
@@ -207,7 +207,7 @@ void main() {
     });
 
     test('a custom scheme URL carrying lander_link resolves that link', () async {
-      const carried = 'https://acme.lndr.link/spring-sale?lander_token=AbCdEfGh12345678';
+      const carried = 'https://acme.lander.link/spring-sale?lander_token=AbCdEfGh12345678';
       final raw = 'acmeshop://sale/spring?lander_link=${Uri.encodeQueryComponent(carried)}';
       final api = FakeApi(handlers: {
         '/v1/sdk/resolve': (r) => json({...deferredSpring, 'method': 'landing_page'}),
@@ -224,7 +224,7 @@ void main() {
     });
 
     test('when that resolve fails, the scheme URL still routes to the right screen', () async {
-      final raw = 'acmeshop://sale/spring?lander_link=${Uri.encodeQueryComponent('https://acme.lndr.link/x')}';
+      final raw = 'acmeshop://sale/spring?lander_link=${Uri.encodeQueryComponent('https://acme.lander.link/x')}';
       final api = FakeApi(handlers: {'/v1/sdk/resolve': (r) => throw http.ClientException('offline')});
       final c = client(FakePlatform(initialLink: raw), api);
       await started(c);
@@ -299,7 +299,7 @@ void main() {
   group('resolve', () {
     test('a known link resolves to a LanderLink with its params', () async {
       final api = FakeApi(handlers: {'/v1/sdk/resolve': (r) => json(resolvedP123)});
-      final c = client(FakePlatform(initialLink: 'https://acme.lndr.link/p-123?utm_source=x'), api);
+      final c = client(FakePlatform(initialLink: 'https://acme.lander.link/p-123?utm_source=x'), api);
       await started(c);
 
       final link = await c.getInitialLink();
@@ -313,10 +313,10 @@ void main() {
       expect(link.campaign, isNull);
       expect(link.isDeferred, isFalse);
       expect(link.confidence, LanderConfidence.deterministic);
-      expect(link.uri.toString(), 'https://acme.lndr.link/p-123?utm_source=x');
+      expect(link.uri.toString(), 'https://acme.lander.link/p-123?utm_source=x');
 
       final resolve = api.to('/v1/sdk/resolve').single;
-      expect(resolve.body, {'installId': c.installId, 'url': 'https://acme.lndr.link/p-123?utm_source=x'});
+      expect(resolve.body, {'installId': c.installId, 'url': 'https://acme.lander.link/p-123?utm_source=x'});
       expect(resolve.headers['Idempotency-Key'], isNotNull);
       expect(api.requests.first.path, '/v1/sdk/init', reason: 'init registers the install before resolve');
     });
@@ -336,7 +336,7 @@ void main() {
 
     test('a network failure delivers the raw Uri instead of losing the link', () async {
       final api = FakeApi(handlers: {'/v1/sdk/resolve': (r) => throw http.ClientException('offline')});
-      final c = client(FakePlatform(initialLink: 'https://acme.lndr.link/p-123'), api);
+      final c = client(FakePlatform(initialLink: 'https://acme.lander.link/p-123'), api);
       await started(c);
       final link = await c.getInitialLink();
       expect(link!.isResolved, isFalse);
@@ -367,20 +367,20 @@ void main() {
 
       final got = <String?>[];
       c.dispatcher.stream.listen((l) => got.add(l.path));
-      platform.links.add('https://acme.lndr.link/slow');
-      platform.links.add('https://acme.lndr.link/fast');
+      platform.links.add('https://acme.lander.link/slow');
+      platform.links.add('https://acme.lander.link/fast');
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(got, ['/slow', '/fast']);
     });
 
     test('the same URL reported twice in a row counts once', () async {
       final api = FakeApi();
-      final platform = FakePlatform(initialLink: 'https://acme.lndr.link/p-123');
+      final platform = FakePlatform(initialLink: 'https://acme.lander.link/p-123');
       final c = client(platform, api);
       await started(c);
       final got = <LanderLink>[];
       c.dispatcher.stream.listen(got.add);
-      platform.links.add('https://acme.lndr.link/p-123');
+      platform.links.add('https://acme.lander.link/p-123');
       await pumpEventQueue();
       expect(got, hasLength(1), reason: 'the launch link, delivered once');
       expect(api.to('/v1/sdk/resolve'), hasLength(1));
@@ -538,8 +538,8 @@ void main() {
       final api = FakeApi(handlers: {
         '/v1/sdk/links': (r) => json({
               'id': '0d6f1a7e-1111-4222-8333-944445555666',
-              'url': 'https://acme.lndr.link/x7Kp2Qa',
-              'domain': 'acme.lndr.link',
+              'url': 'https://acme.lander.link/x7Kp2Qa',
+              'domain': 'acme.lander.link',
               'slug': 'x7Kp2Qa',
               'title': null,
               'deepLinkPath': r.body['deepLinkPath'],
@@ -557,7 +557,7 @@ void main() {
       await started(c);
       final link = await c.createLink({'deepLinkPath': '/product/123', 'params': {'productId': '123'}, 'channel': 'share'});
 
-      expect(link.url.toString(), 'https://acme.lndr.link/x7Kp2Qa');
+      expect(link.url.toString(), 'https://acme.lander.link/x7Kp2Qa');
       expect(link.path, '/product/123');
       expect(link.params, {'productId': '123'});
       expect(link.createdAt, DateTime.utc(2026, 10, 15, 10));

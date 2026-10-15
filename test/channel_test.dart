@@ -81,7 +81,7 @@ class FakeNative {
 FakeApi resolvingApi() => FakeApi(handlers: {
       '/v1/sdk/resolve': (r) {
         final uri = Uri.parse(r.body['url'] as String);
-        if (uri.host != 'acme.lndr.link') {
+        if (uri.host != 'acme.lander.link') {
           return json({'error': {'code': 'link_not_found', 'message': ''}}, 404);
         }
         final id = uri.pathSegments.single.replaceFirst('p-', '');
@@ -136,10 +136,10 @@ void main() {
 
   group('MethodChannelLanderPlatform', () {
     test('talks to the native methods and storage', () async {
-      native = FakeNative(initialLink: 'https://acme.lndr.link/p-1')..install();
+      native = FakeNative(initialLink: 'https://acme.lander.link/p-1')..install();
       final platform = MethodChannelLanderPlatform();
 
-      expect(await platform.getInitialLink(), 'https://acme.lndr.link/p-1');
+      expect(await platform.getInitialLink(), 'https://acme.lander.link/p-1');
       expect(await platform.getInitialLink(), isNull, reason: 'the native side hands it out once');
       final info = await platform.getPlatformInfo();
       expect(info.platform, 'ios');
@@ -152,12 +152,12 @@ void main() {
     });
 
     test('receives links the native side buffered before Dart listened', () async {
-      native = FakeNative(queuedBeforeListen: ['https://acme.lndr.link/p-1'])..install();
+      native = FakeNative(queuedBeforeListen: ['https://acme.lander.link/p-1'])..install();
       final got = <String>[];
       final sub = MethodChannelLanderPlatform().linkStream.listen(got.add);
-      native.open('https://acme.lndr.link/p-2');
+      native.open('https://acme.lander.link/p-2');
       await pumpEventQueue();
-      expect(got, ['https://acme.lndr.link/p-1', 'https://acme.lndr.link/p-2']);
+      expect(got, ['https://acme.lander.link/p-1', 'https://acme.lander.link/p-2']);
       await sub.cancel();
     });
   });
@@ -165,8 +165,8 @@ void main() {
   group('Lander', () {
     testWidgets('links that arrive before the router subscribes are buffered, not lost', (tester) async {
       native = FakeNative(
-        initialLink: 'https://acme.lndr.link/p-1',
-        queuedBeforeListen: ['https://acme.lndr.link/p-2'],
+        initialLink: 'https://acme.lander.link/p-1',
+        queuedBeforeListen: ['https://acme.lander.link/p-2'],
       )..install();
       final api = resolvingApi();
       Lander.debugHttpClient = api.client;
@@ -194,14 +194,14 @@ void main() {
     });
 
     test('getInitialLink claims the launch link; the stream gets the rest', () async {
-      native = FakeNative(initialLink: 'https://acme.lndr.link/p-7')..install();
+      native = FakeNative(initialLink: 'https://acme.lander.link/p-7')..install();
       Lander.debugHttpClient = resolvingApi().client;
       await Lander.initialize(apiKey: 'pk_test_DemoPublishableKey000000000000', baseUrl: 'http://localhost:8787');
 
       final initial = Lander.getInitialLink();
       final streamed = <String>[];
       final sub = Lander.onDeepLink.listen((l) => streamed.add(l.route));
-      native.open('https://acme.lndr.link/p-8');
+      native.open('https://acme.lander.link/p-8');
 
       final link = await initial;
       await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -212,7 +212,7 @@ void main() {
     });
 
     test('onDeepLink can be listened to before initialize', () async {
-      native = FakeNative(initialLink: 'https://acme.lndr.link/p-5')..install();
+      native = FakeNative(initialLink: 'https://acme.lander.link/p-5')..install();
       Lander.debugHttpClient = resolvingApi().client;
       final got = <String>[];
       final sub = Lander.onDeepLink.listen((l) => got.add(l.route));

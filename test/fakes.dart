@@ -93,7 +93,7 @@ http.Response json(Object body, [int status = 200, Map<String, String> headers =
 
 const resolvedP123 = {
   'linkId': '6f1c1f9e-8a2b-4c3d-9e4f-5a6b7c8d9e0f',
-  'url': 'https://acme.lndr.link/p-123',
+  'url': 'https://acme.lander.link/p-123',
   'path': '/product/123',
   'params': {'productId': '123', 'utm_source': 'x'},
   'campaign': null,
@@ -106,7 +106,7 @@ const resolvedP123 = {
 /// What `/v1/sdk/init` returns on an Android first launch with a Play referrer token.
 const deferredSpring = {
   'linkId': '9b1f3c2e-4d5a-4b6c-8d7e-0f1a2b3c4d5e',
-  'url': 'https://acme.lndr.link/spring-sale',
+  'url': 'https://acme.lander.link/spring-sale',
   'path': '/sale/spring',
   'params': {'discount': '15'},
   'campaign': 'spring_2027',
