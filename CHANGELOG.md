@@ -1,0 +1,12 @@
+## 0.1.0
+
+First release: the installed app path.
+
+* `Lander.initialize`: random install ID (UUID v4, stored outside backups), `POST /v1/sdk/init` on every launch with `isFirstLaunch`, Play Install Referrer on Android first launch. Never throws on network errors; a failed first launch report is retried on the next launch with the same idempotency key, and an `install_id_conflict` gets a fresh install ID.
+* `Lander.onDeepLink` and `Lander.getInitialLink`: Universal Links, App Links and custom scheme URLs on cold and warm start, resolved through `POST /v1/sdk/resolve`. Links are buffered until the app listens, the launch link is delivered exactly once, and unknown links (404) or network failures still deliver the raw URL.
+* `Lander.createLink`: short links from inside the app via `POST /v1/sdk/links`.
+* `Lander.trackEvent`: persistent offline queue, batches of up to 100, exponential backoff with jitter and `Retry-After`, deduplication by client generated event ID, flush on app background, held until the install is registered. Optional `linkId` for attribution.
+* Request timeouts (10 s) and an `Idempotency-Key` on every write, reused across retries.
+* Android (Kotlin): launch intent and `onNewIntent` delivery, Recents replay ignored, Play Install Referrer.
+* iOS (Swift): app delegate and `UIScene` based apps, `NSUserActivity` Universal Links and URL opens, privacy manifest.
+* Example app: Acme Shop with go_router.
