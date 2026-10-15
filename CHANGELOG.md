@@ -1,3 +1,13 @@
+## 0.2.0
+
+Deferred deep linking.
+
+* Deferred links from `POST /v1/sdk/init` arrive through `getInitialLink` and `onDeepLink` as before, now with `isDeferred`, `confidence` (`deterministic`, `probabilistic` or `unattributed`) and the new `LanderLink.method` (`install_referrer`, `probabilistic_match`, `landing_page`, `authenticated_handoff`, `universal_link`, `app_link`). Still delivered exactly once, and a link that opened the app wins over a deferred one.
+* Android: installs from a Lander link land on that link's screen. The redirector now puts a single use `lander_token` in the Play Store referrer, which the SDK already sends on first launch (deterministic, `install_referrer`).
+* `Lander.claimHandoff(userId)`: after sign in, returns the link your backend bound to that user with `POST /v1/handoffs` (deterministic, `authenticated_handoff`), or null. Returned only, never emitted on `onDeepLink`. Retries reuse one `Idempotency-Key`, so a lost response does not lose the link.
+* Custom scheme URLs that carry a short link in `lander_link` (the iOS "Continue in app" page's open button) are resolved like the link itself; `uri` stays the scheme URL, and if resolving fails the scheme URL's path still routes.
+* `sdkVersion` reported as `0.2.0`.
+
 ## 0.1.0
 
 First release: the installed app path.

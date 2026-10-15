@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'lander_flutter'
-  s.version          = '0.1.0'
+  s.version          = '0.2.0'
   s.summary          = 'Deep linking without the fuss: receive, resolve and create Lander links in Flutter apps.'
   s.description      = <<-DESC
 Deep linking without the fuss: receive, resolve and create Lander links in Flutter apps.

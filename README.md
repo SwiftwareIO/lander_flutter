@@ -2,7 +2,8 @@
 
 Deep linking without the fuss. The Flutter SDK for [Lander](https://lndr.link): receive Universal Links, App Links and custom scheme URLs, resolve them to the link you created in Lander, create short links from inside the app, and report conversions.
 
-- One stream for every link: cold start, warm start, deferred.
+- One stream for every link: cold start, warm start, deferred (after install).
+- Every link says how sure Lander is: `deterministic`, `probabilistic` or `unattributed`.
 - Links are buffered until your router listens, so nothing is lost during startup.
 - Unknown links still reach your app with the raw URL.
 - Offline event queue with batching, retries and deduplication.
@@ -63,8 +64,9 @@ _sub = Lander.onDeepLink.listen((link) {
 | `path` | The in app route set on the link, for example `/product/123` |
 | `params` | Link params, with the opened URL's query parameters merged over them |
 | `campaign`, `channel` | Attribution labels set on the link |
-| `isDeferred` | True when the link was recovered after an install |
+| `isDeferred` | True when the link was recovered after an install or handed off after sign in |
 | `confidence` | `deterministic`, `probabilistic` or `unattributed` |
+| `method` | How the link was tied to the open: `universal_link`, `app_link`, `install_referrer`, `landing_page`, `authenticated_handoff` or `probabilistic_match` |
 | `isResolved` | Whether Lander recognized the link |
 | `route` | `path` when resolved, otherwise the raw URL's path and query |
 
@@ -73,7 +75,7 @@ How delivery works:
 - **Buffered.** Links that arrive while nothing listens to `onDeepLink` (cold start, or before your router is ready) are kept and replayed, in order, to the next listener. You can even listen before `initialize`.
 - **The launch link is delivered once.** Either listen to `onDeepLink` only (simplest), or call `getInitialLink()` for the launch link, for example to pick the router's `initialLocation`. Whichever gets it first wins; the other does not see it again, so navigation never happens twice.
 - **Unknown links still arrive.** When the API answers 404 (not a Lander link, for example a page on your own site), or the network is down, you get a `LanderLink` with `isResolved == false` and only `uri` set.
-- **Custom scheme URLs** (`acmeshop://product/123`) are delivered as is, without a network call. `route` treats the host as the first path segment, so this one routes to `/product/123`.
+- **Custom scheme URLs** (`acmeshop://product/123`) are delivered as is, without a network call. `route` treats the host as the first path segment, so this one routes to `/product/123`. The exception is a scheme URL carrying a short link in `lander_link` (the iOS "Continue in app" page builds these): that link is resolved, and `uri` stays the scheme URL.
 - The same URL reported twice within two seconds (some OS versions do this at launch) counts as one open.
 
 ```dart
@@ -85,6 +87,33 @@ final router = GoRouter(initialLocation: initial?.route ?? '/', routes: [...]);
 `getInitialLink` waits for the resolve request when the app was opened by a link, and on a first launch for the init request (a deferred link may come back). Each request has a 10 second timeout, so on a slow network this can take a while; listening to `onDeepLink` never blocks anything.
 
 Opens are reported by the API when the SDK resolves the link, so you do not need to track them yourself.
+
+### Deferred deep links
+
+A deferred deep link is a link someone tapped before the app was installed. Lander brings them to the right screen after install wherever that can be done honestly, and labels every result. The full picture, per platform, is in [`docs/DEFERRED.md`](../../docs/DEFERRED.md).
+
+- **Android, automatic and deterministic.** The redirector sends the click to the Play Store with a single use token in the install referrer. On first launch the SDK sends the referrer to `POST /v1/sdk/init`, and the link comes back through `getInitialLink` / `onDeepLink` with `isDeferred: true`, `confidence: deterministic` and `method: install_referrer`. Nothing to code.
+- **iOS "Continue in app" page (deterministic).** When the project turns it on, iOS clicks see a small page with an App Store button and an "I already have the app, open it" button. After installing, the user comes back and taps the second button; the app opens on the link's screen with `method: landing_page` (and `isDeferred: true` when the app was installed after the click). If your iOS app has a custom URL scheme, the button uses it, so add the scheme to `Info.plist` (see iOS setup).
+- **Authenticated handoff (deterministic, both platforms).** Your server binds a link to a user, the app claims it after sign in:
+
+  ```dart
+  final user = await auth.signIn();
+  final link = await Lander.claimHandoff(user.id); // null when nothing is pending
+  if (link != null) router.go(link.route, extra: link);
+  ```
+
+  `claimHandoff` returns the link and never also emits it on `onDeepLink`, so navigation happens once. Use an ID that cannot be guessed (your auth system's user UUID, not an email address or a counter).
+- **iOS probabilistic matching (opt in, off by default).** Projects that turn it on get a deferred link on iOS first launch when exactly one recent click (default 2 hours) matches the install's OS major version and country. It arrives with `confidence: probabilistic`, so treat it as a suggestion: for example land on the product page, never sign the user in or apply a credit on the strength of it.
+- **Everything else is `unattributed`:** no deferred link is delivered, and the install is reported as unattributed.
+
+```dart
+Lander.onDeepLink.listen((link) {
+  if (link.isDeferred && link.confidence == LanderConfidence.probabilistic) {
+    // Show it, but do not act on it as if the user had tapped it in the app.
+  }
+  router.go(link.route, extra: link);
+});
+```
 
 ### Create links
 
@@ -206,7 +235,8 @@ The plugin returns `false` from every URL callback so other plugins (for example
 ## Privacy
 
 - **Install ID only.** A random UUID v4 per install. No device model, no advertising ID (IDFA or GAID), no device fingerprint, no pasteboard access.
-- **What is sent:** the install ID, platform, app version, OS version, SDK version, the URLs that opened the app, the events you track, and on Android first launch the Play Install Referrer string.
+- **What is sent:** the install ID, platform, app version, OS version, SDK version, the URLs that opened the app, the events you track, on Android first launch the Play Install Referrer string, and the user ID you pass to `claimHandoff` (the API stores only a hash of it).
+- **Deferred links never use fingerprints or IP addresses.** Android uses the Play Install Referrer; iOS uses an explicit tap on the "Continue in app" page or your own sign in. Opt in probabilistic matching compares only OS major version, country and click time.
 - **Storage** lives in Application Support (iOS) and `noBackupFilesDir` (Android), excluded from backups.
 - The iOS privacy manifest (`PrivacyInfo.xcprivacy`) declares a device ID and product interaction data, both for analytics, not linked to the user and not used for tracking. No required reason APIs are used.
 
@@ -247,4 +277,4 @@ flutter run
 
 ## API
 
-The SDK only talks to the public API documented in `docs/API.md` (`/v1/sdk/init`, `/v1/sdk/resolve`, `/v1/sdk/events`, `/v1/sdk/links`), never to the database. Every request has a 10 second timeout; every write carries an `Idempotency-Key` that stays the same across retries.
+The SDK only talks to the public API documented in `docs/API.md` (`/v1/sdk/init`, `/v1/sdk/resolve`, `/v1/sdk/events`, `/v1/sdk/links`, `/v1/sdk/handoffs/claim`), never to the database. Every request has a 10 second timeout; every write carries an `Idempotency-Key` that stays the same across retries.

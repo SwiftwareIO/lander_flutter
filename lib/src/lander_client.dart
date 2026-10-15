@@ -46,6 +46,10 @@ class LanderClient with WidgetsBindingObserver {
   }
 
   static const installIdKey = 'install_id';
+
+  /// Query parameter of a custom scheme URL carrying the Lander link it
+  /// stands for.
+  static const landerLinkParam = 'lander_link';
   static const firstLaunchReportedKey = 'first_launch_reported';
 
   /// Repeated identical URLs inside this window count as one open. iOS and
@@ -244,16 +248,22 @@ class LanderClient with WidgetsBindingObserver {
       logger.log('Ignoring unparsable link $raw');
       return null;
     }
+    var target = raw;
     if (uri.scheme != 'http' && uri.scheme != 'https') {
-      // Custom scheme URLs are not Lander short links; hand them over as is.
-      return LanderLink.unresolved(uri);
+      // Custom scheme URLs are not Lander short links, unless they carry one in
+      // `lander_link` (the "Continue in app" page's open button does).
+      final carried = Uri.tryParse(uri.queryParameters[landerLinkParam] ?? '');
+      if (carried == null || (carried.scheme != 'https' && carried.scheme != 'http')) {
+        return LanderLink.unresolved(uri);
+      }
+      target = carried.toString();
     }
     // Let init register this install first, but never hold a link for long.
     await initDone.timeout(api.timeout, onTimeout: () {});
     try {
       final json = await api.post(
         '/v1/sdk/resolve',
-        {'installId': _installId, 'url': raw},
+        {'installId': _installId, 'url': target},
         idempotencyKey: _uuid.v4(),
         maxAttempts: 2,
       );
@@ -270,6 +280,40 @@ class LanderClient with WidgetsBindingObserver {
   }
 
   Future<LanderLink?> getInitialLink() => dispatcher.takeInitialLink();
+
+  /// `POST /v1/sdk/handoffs/claim`. Returns the link the customer's backend
+  /// bound to [userId], or null. The link is returned only, never also sent to
+  /// `onDeepLink`, so the app navigates once.
+  Future<LanderLink?> claimHandoff(String userId) async {
+    await _ready;
+    // The API only knows installs that went through init.
+    await initDone;
+    if (!_registered) {
+      throw const LanderException(
+        code: 'install_not_registered',
+        message: 'Lander could not register this install yet (offline?); try again later',
+      );
+    }
+    final json = await api.post(
+      '/v1/sdk/handoffs/claim',
+      {'installId': _installId, 'userId': userId},
+      // One key per call, reused across its retries: a retry after a lost
+      // response gets the same link instead of nothing.
+      idempotencyKey: _uuid.v4(),
+      maxAttempts: 3,
+    );
+    final deferred = json['deferredLink'];
+    if (deferred == null) {
+      logger.log('No pending handoff');
+      return null;
+    }
+    if (deferred is! Map<String, Object?>) {
+      throw const LanderException(code: 'invalid_response', message: 'Unexpected claimHandoff response');
+    }
+    final link = LanderLink.fromJson(deferred);
+    logger.log('Handoff: $link');
+    return link;
+  }
 
   Future<LanderShortLink> createLink(Map<String, Object?> body) async {
     await _ready;

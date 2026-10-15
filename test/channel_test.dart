@@ -225,6 +225,7 @@ void main() {
     test('rejects secret keys and calls before initialize', () async {
       native = FakeNative()..install();
       expect(() => Lander.trackEvent('x'), throwsStateError);
+      expect(() => Lander.claimHandoff('user_1'), throwsStateError);
       expect(() => Lander.initialize(apiKey: 'sk_test_DemoSecretKey00000000000000000'), throwsArgumentError);
       expect(() => Lander.initialize(apiKey: 'nope'), throwsArgumentError);
     });
@@ -235,6 +236,14 @@ void main() {
       await Lander.initialize(apiKey: 'pk_test_DemoPublishableKey000000000000');
       expect(() => Lander.createLink(path: 'no-slash'), throwsArgumentError);
       expect(() => Lander.createLink(params: {'when': DateTime(2026)}), throwsArgumentError);
+    });
+
+    test('claimHandoff validates the user ID', () async {
+      native = FakeNative()..install();
+      Lander.debugHttpClient = resolvingApi().client;
+      await Lander.initialize(apiKey: 'pk_test_DemoPublishableKey000000000000');
+      expect(() => Lander.claimHandoff('  '), throwsArgumentError);
+      expect(() => Lander.claimHandoff('x' * 257), throwsArgumentError);
     });
   });
 }

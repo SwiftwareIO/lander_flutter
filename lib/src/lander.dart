@@ -62,7 +62,8 @@ abstract final class Lander {
   }
 
   /// Every deep link the app receives: Universal Links, App Links, custom
-  /// scheme URLs and deferred links.
+  /// scheme URLs and deferred links (recovered on first launch, with
+  /// [LanderLink.isDeferred] true and their [LanderLink.confidence]).
   ///
   /// Safe to listen to at any time, even before [initialize]. Links that
   /// arrive while nobody listens are buffered and replayed in order to the
@@ -126,6 +127,30 @@ abstract final class Lander {
       'ogImageUrl': ?ogImageUrl?.toString(),
       'expiresAt': ?expiresAt?.toUtc().toIso8601String(),
     });
+  }
+
+  /// Claims the link your backend handed off to this user, after sign in.
+  ///
+  /// Your server binds a link to one of its users with `POST /v1/handoffs`
+  /// (secret key), for example when someone signs up on your website from a
+  /// campaign link. After that user signs in to the app, call this with the
+  /// same [userId] to get that link (`isDeferred` true, `confidence`
+  /// deterministic, `method` `authenticated_handoff`), or null when nothing is
+  /// pending. The newest pending handoff wins and every pending one for the
+  /// user is cleared, so a second call returns null.
+  ///
+  /// The link is only returned, never also emitted on [onDeepLink], so
+  /// navigate with it yourself. Use an ID that cannot be guessed (your auth
+  /// system's user UUID, not an email address or a counter). Throws
+  /// [LanderException] when the request fails after retries, or when the
+  /// install could not be registered yet (`install_not_registered`).
+  static Future<LanderLink?> claimHandoff(String userId) {
+    final client = _require('claimHandoff');
+    final id = userId.trim();
+    if (id.isEmpty || id.length > 256) {
+      throw ArgumentError.value(userId, 'userId', 'must be 1 to 256 characters');
+    }
+    return client.claimHandoff(id);
   }
 
   /// Records a custom event, for example a signup or a purchase.

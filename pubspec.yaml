@@ -1,6 +1,6 @@
 name: lander_flutter
 description: "Deep linking without the fuss: receive, resolve and create Lander links, and report opens and conversions from Flutter apps."
-version: 0.1.0
+version: 0.2.0
 homepage: https://lndr.link
 repository: https://github.com/lander/lander/tree/main/sdk/lander_flutter
 

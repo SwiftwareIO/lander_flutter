@@ -100,4 +100,18 @@ const resolvedP123 = {
   'channel': 'share',
   'isDeferred': false,
   'confidence': 'deterministic',
+  'method': 'universal_link',
+};
+
+/// What `/v1/sdk/init` returns on an Android first launch with a Play referrer token.
+const deferredSpring = {
+  'linkId': '9b1f3c2e-4d5a-4b6c-8d7e-0f1a2b3c4d5e',
+  'url': 'https://acme.lndr.link/spring-sale',
+  'path': '/sale/spring',
+  'params': {'discount': '15'},
+  'campaign': 'spring_2027',
+  'channel': null,
+  'isDeferred': true,
+  'confidence': 'deterministic',
+  'method': 'install_referrer',
 };

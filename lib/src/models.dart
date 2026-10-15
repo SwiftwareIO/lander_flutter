@@ -6,7 +6,8 @@ enum LanderConfidence {
   /// open, or an Android install referrer token.
   deterministic,
 
-  /// Matched by a heuristic. Only used for opt in deferred links on iOS.
+  /// Matched by coarse signals (OS version, country, click time) within a
+  /// short window. Only for iOS deferred links of projects that opted in.
   probabilistic,
 
   /// No link could be tied to this open.
@@ -38,6 +39,7 @@ class LanderLink {
     this.channel,
     this.isDeferred = false,
     this.confidence = LanderConfidence.unattributed,
+    this.method,
   });
 
   /// A link Lander could not resolve. Only the raw [uri] is available.
@@ -49,7 +51,8 @@ class LanderLink {
         campaign = null,
         channel = null,
         isDeferred = false,
-        confidence = LanderConfidence.unattributed;
+        confidence = LanderConfidence.unattributed,
+        method = null;
 
   /// Builds a link from a `ResolvedLink` JSON object. [uri] is the URL that
   /// opened the app; for deferred links it falls back to the link's own URL.
@@ -71,6 +74,7 @@ class LanderLink {
       channel: json['channel'] as String?,
       isDeferred: json['isDeferred'] == true,
       confidence: LanderConfidence.parse(json['confidence']),
+      method: json['method'] as String?,
     );
   }
 
@@ -93,10 +97,17 @@ class LanderLink {
   final String? campaign;
   final String? channel;
 
-  /// True when the link was recovered after an install (deferred deep link).
+  /// True when the link was recovered after an install or handed off after
+  /// sign in (a deferred deep link), rather than opened directly.
   final bool isDeferred;
 
+  /// How sure Lander is that this link belongs to this open or install.
   final LanderConfidence confidence;
+
+  /// How the link was tied to this open or install, as reported by the API:
+  /// `universal_link`, `app_link`, `install_referrer`, `landing_page`,
+  /// `authenticated_handoff` or `probabilistic_match`. Null when unresolved.
+  final String? method;
 
   /// Whether Lander recognized this link.
   bool get isResolved => linkId != null;
@@ -123,14 +134,16 @@ class LanderLink {
       other.campaign == campaign &&
       other.channel == channel &&
       other.isDeferred == isDeferred &&
-      other.confidence == confidence;
+      other.confidence == confidence &&
+      other.method == method;
 
   @override
   int get hashCode => Object.hash(uri, linkId, path, isDeferred, confidence);
 
   @override
   String toString() => isResolved
-      ? 'LanderLink($linkId, path: $path, params: $params, uri: $uri)'
+      ? 'LanderLink($linkId, path: $path, params: $params, uri: $uri'
+          '${isDeferred ? ', deferred' : ''}, ${confidence.name}${method == null ? '' : ' via $method'})'
       : 'LanderLink(unresolved, uri: $uri)';
 }
 

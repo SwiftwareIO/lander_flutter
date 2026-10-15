@@ -132,6 +132,170 @@ void main() {
     });
   });
 
+  group('deferred deep linking', () {
+    FakeApi deferredApi([Map<String, Object?> link = deferredSpring]) => FakeApi(handlers: {
+          '/v1/sdk/init': (r) => json({
+                'installId': r.body['installId'],
+                'deferredLink': r.body['isFirstLaunch'] == true ? link : null,
+              }),
+        });
+
+    test('an Android referrer token comes back as a deterministic deferred link', () async {
+      final platform = FakePlatform(platform: 'android', installReferrer: 'lander_token=AbCdEfGh12345678');
+      final api = deferredApi();
+      final c = client(platform, api);
+      await started(c);
+      expect(api.to('/v1/sdk/init').single.body['installReferrer'], 'lander_token=AbCdEfGh12345678');
+
+      final link = await c.getInitialLink();
+      expect(link, isNotNull);
+      expect(link!.isDeferred, isTrue);
+      expect(link.confidence, LanderConfidence.deterministic);
+      expect(link.method, 'install_referrer');
+      expect(link.route, '/sale/spring');
+      expect(link.params, {'discount': '15'});
+      expect(link.uri.toString(), 'https://acme.lndr.link/spring-sale');
+    });
+
+    test('is delivered exactly once, through onDeepLink when nobody asks getInitialLink', () async {
+      final platform = FakePlatform(platform: 'android', installReferrer: 'lander_token=AbCdEfGh12345678');
+      final c = client(platform, deferredApi());
+      final got = <LanderLink>[];
+      c.dispatcher.stream.listen(got.add);
+      await started(c);
+      expect(got, hasLength(1));
+      expect(got.single.isDeferred, isTrue);
+      expect(await c.getInitialLink(), isNull, reason: 'the stream already delivered it');
+
+      // The next launch is not a first launch: nothing is recovered again.
+      final api2 = deferredApi();
+      final c2 = client(platform, api2);
+      final again = <LanderLink>[];
+      c2.dispatcher.stream.listen(again.add);
+      await started(c2);
+      expect(api2.to('/v1/sdk/init').single.body['isFirstLaunch'], isFalse);
+      expect(again, isEmpty);
+      expect(await c2.getInitialLink(), isNull);
+    });
+
+    test('a link that opened the app wins over a deferred link', () async {
+      final api = FakeApi(handlers: {
+        '/v1/sdk/init': (r) => json({'installId': r.body['installId'], 'deferredLink': deferredSpring}),
+        '/v1/sdk/resolve': (r) => json(resolvedP123),
+      });
+      final c = client(FakePlatform(initialLink: 'https://acme.lndr.link/p-123'), api);
+      final got = <LanderLink>[];
+      c.dispatcher.stream.listen(got.add);
+      await started(c);
+      expect(got.map((l) => l.path), ['/product/123']);
+    });
+
+    test('iOS probabilistic links keep their label', () async {
+      final api = deferredApi({...deferredSpring, 'confidence': 'probabilistic', 'method': 'probabilistic_match'});
+      final c = client(FakePlatform(), api);
+      await started(c);
+      final link = await c.getInitialLink();
+      expect(link!.confidence, LanderConfidence.probabilistic);
+      expect(link.method, 'probabilistic_match');
+      expect(link.isDeferred, isTrue);
+    });
+
+    test('no deferred link: getInitialLink completes with null after init', () async {
+      final c = client(FakePlatform(), FakeApi());
+      await started(c);
+      expect(await c.getInitialLink(), isNull);
+    });
+
+    test('a custom scheme URL carrying lander_link resolves that link', () async {
+      const carried = 'https://acme.lndr.link/spring-sale?lander_token=AbCdEfGh12345678';
+      final raw = 'acmeshop://sale/spring?lander_link=${Uri.encodeQueryComponent(carried)}';
+      final api = FakeApi(handlers: {
+        '/v1/sdk/resolve': (r) => json({...deferredSpring, 'method': 'landing_page'}),
+      });
+      final c = client(FakePlatform(initialLink: raw), api);
+      await started(c);
+      final link = await c.getInitialLink();
+      expect(api.to('/v1/sdk/resolve').single.body['url'], carried);
+      expect(link!.isResolved, isTrue);
+      expect(link.method, 'landing_page');
+      expect(link.isDeferred, isTrue);
+      expect(link.route, '/sale/spring');
+      expect(link.uri.toString(), raw, reason: 'uri stays what the OS delivered');
+    });
+
+    test('when that resolve fails, the scheme URL still routes to the right screen', () async {
+      final raw = 'acmeshop://sale/spring?lander_link=${Uri.encodeQueryComponent('https://acme.lndr.link/x')}';
+      final api = FakeApi(handlers: {'/v1/sdk/resolve': (r) => throw http.ClientException('offline')});
+      final c = client(FakePlatform(initialLink: raw), api);
+      await started(c);
+      final link = await c.getInitialLink();
+      expect(link!.isResolved, isFalse);
+      expect(link.route, startsWith('/sale/spring?'));
+    });
+  });
+
+  group('claimHandoff', () {
+    final handoff = {...deferredSpring, 'params': {'discount': '15', 'ref': 'email'}, 'method': 'authenticated_handoff'};
+
+    test('returns the handed off link without emitting it on the stream', () async {
+      final api = FakeApi(handlers: {'/v1/sdk/handoffs/claim': (r) => json({'deferredLink': handoff})});
+      final c = client(FakePlatform(), api);
+      final got = <LanderLink>[];
+      c.dispatcher.stream.listen(got.add);
+      await started(c);
+
+      final link = await c.claimHandoff('user_8f2c');
+      expect(link!.isDeferred, isTrue);
+      expect(link.confidence, LanderConfidence.deterministic);
+      expect(link.method, 'authenticated_handoff');
+      expect(link.params, {'discount': '15', 'ref': 'email'});
+      expect(got, isEmpty);
+      final req = api.to('/v1/sdk/handoffs/claim').single;
+      expect(req.body, {'installId': c.installId, 'userId': 'user_8f2c'});
+      expect(req.headers['Idempotency-Key'], isNotNull);
+    });
+
+    test('returns null when nothing is pending', () async {
+      final api = FakeApi(handlers: {'/v1/sdk/handoffs/claim': (r) => json({'deferredLink': null})});
+      final c = client(FakePlatform(), api);
+      await started(c);
+      expect(await c.claimHandoff('user_8f2c'), isNull);
+    });
+
+    test('retries with one Idempotency-Key, then throws', () async {
+      var calls = 0;
+      final api = FakeApi(handlers: {
+        '/v1/sdk/handoffs/claim': (r) => ++calls < 2
+            ? json({'error': {'code': 'internal_error', 'message': 'x'}}, 500)
+            : json({'deferredLink': handoff}),
+      });
+      final c = client(FakePlatform(), api);
+      await started(c);
+      expect((await c.claimHandoff('u'))!.linkId, deferredSpring['linkId']);
+      final keys = api.to('/v1/sdk/handoffs/claim').map((r) => r.headers['Idempotency-Key']).toSet();
+      expect(keys, hasLength(1));
+
+      final down = FakeApi(handlers: {
+        '/v1/sdk/handoffs/claim': (r) => json({'error': {'code': 'internal_error', 'message': 'x'}}, 500),
+      });
+      final c2 = client(FakePlatform(), down);
+      await started(c2);
+      await expectLater(c2.claimHandoff('u'), throwsA(isA<LanderException>()));
+      expect(down.to('/v1/sdk/handoffs/claim'), hasLength(3));
+    });
+
+    test('throws install_not_registered when init never succeeded', () async {
+      final api = FakeApi(handlers: {'/v1/sdk/init': (r) => throw http.ClientException('offline')});
+      final c = client(FakePlatform(), api);
+      await started(c);
+      await expectLater(
+        c.claimHandoff('u'),
+        throwsA(isA<LanderException>().having((e) => e.code, 'code', 'install_not_registered')),
+      );
+      expect(api.to('/v1/sdk/handoffs/claim'), isEmpty);
+    });
+  });
+
   group('resolve', () {
     test('a known link resolves to a LanderLink with its params', () async {
       final api = FakeApi(handlers: {'/v1/sdk/resolve': (r) => json(resolvedP123)});
