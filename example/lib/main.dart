@@ -19,6 +19,9 @@ String get landerBaseUrl {
 
 Future<void> main() async {
   // Returns quickly: the network init runs in the background.
-  await Lander.initialize(apiKey: landerApiKey, baseUrl: landerBaseUrl, enableLogging: kDebugMode);
+  final started = Lander.initialize(apiKey: landerApiKey, baseUrl: landerBaseUrl, enableLogging: kDebugMode);
   runApp(const ShopApp());
+  await started;
+  // The install ID is known once initialize completes.
+  installId.value = Lander.installId;
 }

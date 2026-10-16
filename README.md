@@ -35,7 +35,7 @@ Future<void> main() async {
 }
 ```
 
-Only publishable keys (`pk_test_...`, `pk_live_...`) are accepted. Secret keys (`sk_...`) are rejected, because anything shipped in an app is public.
+Only publishable keys (`pk_test_...`, `pk_live_...`) are accepted. Secret keys (`sk_...`) are rejected, because anything shipped in an app is public. Surrounding whitespace is ignored and the error never contains the key. Every method that returns a Future reports its errors, `ArgumentError` and `StateError` included, through that Future.
 
 ### Receive links
 
@@ -146,7 +146,7 @@ Events are written to a queue on the device first and sent in batches of up to 1
 - The queue is flushed shortly after each event and when the app goes to the background.
 - A batch the API rejects as invalid is dropped so it cannot block the queue; an auth error pauses sending until the next launch, keeping the events.
 
-`trackEvent` throws `ArgumentError` for programming errors (empty name, name over 100 characters, non JSON properties, a `linkId` that is not a UUID) and never throws for network errors.
+`trackEvent` fails with `ArgumentError` for programming errors (empty name, name over 100 characters, non JSON properties, a `linkId` that is not a UUID) and never throws for network errors.
 
 ### Install ID
 

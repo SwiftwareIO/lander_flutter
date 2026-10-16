@@ -222,28 +222,61 @@ void main() {
       await sub.cancel();
     });
 
-    test('rejects secret keys and calls before initialize', () async {
+    test('rejects secret keys and calls before initialize, through the Future', () async {
       native = FakeNative()..install();
-      expect(() => Lander.trackEvent('x'), throwsStateError);
-      expect(() => Lander.claimHandoff('user_1'), throwsStateError);
-      expect(() => Lander.initialize(apiKey: 'sk_test_DemoSecretKey00000000000000000'), throwsArgumentError);
-      expect(() => Lander.initialize(apiKey: 'nope'), throwsArgumentError);
+      // Calling never throws synchronously; the error is in the Future.
+      final calls = [Lander.trackEvent('x'), Lander.claimHandoff('user_1'), Lander.getInitialLink(), Lander.createLink()];
+      for (final call in calls) {
+        await expectLater(call, throwsStateError);
+      }
+      await expectLater(Lander.initialize(apiKey: 'sk_test_DemoSecretKey00000000000000000'), throwsArgumentError);
+      await expectLater(Lander.initialize(apiKey: 'nope'), throwsArgumentError);
+    });
+
+    test('a malformed key is rejected without echoing it', () async {
+      native = FakeNative()..install();
+      for (final key in [
+        'Bearer sk_live_SecretSecretSecretSecret0000',
+        ' sk_test_SecretSecretSecretSecret0000',
+        'Bearer pk_live_DemoPublishableKey000000000000',
+        'pk_live_Demo Publishable Key000000000000',
+        'pk_prod_DemoPublishableKey000000000000',
+      ]) {
+        Object? error;
+        try {
+          await Lander.initialize(apiKey: key);
+        } catch (e) {
+          error = e;
+        }
+        expect(error, isArgumentError, reason: key);
+        expect('$error', isNot(contains('Secret')), reason: key);
+        expect('$error', isNot(contains('DemoPublishable')), reason: key);
+      }
+    });
+
+    test('a key with surrounding whitespace is trimmed', () async {
+      native = FakeNative()..install();
+      final api = resolvingApi();
+      Lander.debugHttpClient = api.client;
+      await Lander.initialize(apiKey: ' pk_test_DemoPublishableKey000000000000\n');
+      await Lander.debugClient!.initDone;
+      expect(api.to('/v1/sdk/init').single.headers['Authorization'], 'Bearer pk_test_DemoPublishableKey000000000000');
     });
 
     test('createLink validates its arguments', () async {
       native = FakeNative()..install();
       Lander.debugHttpClient = resolvingApi().client;
       await Lander.initialize(apiKey: 'pk_test_DemoPublishableKey000000000000');
-      expect(() => Lander.createLink(path: 'no-slash'), throwsArgumentError);
-      expect(() => Lander.createLink(params: {'when': DateTime(2026)}), throwsArgumentError);
+      await expectLater(Lander.createLink(path: 'no-slash'), throwsArgumentError);
+      await expectLater(Lander.createLink(params: {'when': DateTime(2026)}), throwsArgumentError);
     });
 
     test('claimHandoff validates the user ID', () async {
       native = FakeNative()..install();
       Lander.debugHttpClient = resolvingApi().client;
       await Lander.initialize(apiKey: 'pk_test_DemoPublishableKey000000000000');
-      expect(() => Lander.claimHandoff('  '), throwsArgumentError);
-      expect(() => Lander.claimHandoff('x' * 257), throwsArgumentError);
+      await expectLater(Lander.claimHandoff('  '), throwsArgumentError);
+      await expectLater(Lander.claimHandoff('x' * 257), throwsArgumentError);
     });
   });
 }

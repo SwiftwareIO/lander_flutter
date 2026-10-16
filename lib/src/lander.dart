@@ -10,11 +10,18 @@ import 'platform.dart';
 
 /// Entry point of the Lander SDK.
 ///
+/// Every method that returns a Future reports its errors (including
+/// [ArgumentError] and [StateError]) through that Future, never by throwing
+/// synchronously.
+///
 /// ```dart
 /// await Lander.initialize(apiKey: 'pk_live_...');
 /// Lander.onDeepLink.listen((link) => router.go(link.route));
 /// ```
 abstract final class Lander {
+  /// The format of a publishable key, as in `packages/shared/src/keys.ts`.
+  static final RegExp _publishableKey = RegExp(r'^pk_(test|live)_[A-Za-z0-9]{24,}$');
+
   static LinkDispatcher _dispatcher = LinkDispatcher();
   static LanderClient? _client;
   static Future<void>? _started;
@@ -33,25 +40,32 @@ abstract final class Lander {
   /// (when [enableLogging] is on) and never thrown.
   ///
   /// [apiKey] must be a publishable key (`pk_test_...` or `pk_live_...`).
-  /// Secret keys are rejected because anything shipped in an app is public.
+  /// Surrounding whitespace is ignored. Secret keys are rejected because
+  /// anything shipped in an app is public. Errors, including the
+  /// [ArgumentError] for a bad key, arrive through the returned Future; the
+  /// key itself is never included in an error message.
   static Future<void> initialize({
     required String apiKey,
     String baseUrl = 'https://api.golander.link',
     bool enableLogging = false,
-  }) {
+  }) async {
     if (_client != null) {
       if (enableLogging) debugPrint('[Lander] initialize called twice; ignoring the second call');
       return _started!;
     }
-    if (apiKey.startsWith('sk_')) {
-      throw ArgumentError.value('sk_...', 'apiKey', 'secret keys must never ship in an app; use a pk_ key');
+    final key = apiKey.trim();
+    if (key.contains('sk_')) {
+      throw ArgumentError('secret keys must never ship in an app; use a pk_ key', 'apiKey');
     }
-    if (!apiKey.startsWith('pk_')) {
-      throw ArgumentError.value(apiKey, 'apiKey', 'expected a publishable key starting with pk_');
+    if (!_publishableKey.hasMatch(key)) {
+      throw ArgumentError(
+        'expected a publishable key such as pk_live_..., with no "Bearer" prefix or spaces',
+        'apiKey',
+      );
     }
     WidgetsFlutterBinding.ensureInitialized();
     final client = _client = LanderClient(
-      apiKey: apiKey,
+      apiKey: key,
       baseUrl: baseUrl,
       dispatcher: _dispatcher,
       platform: LanderPlatform.instance,
@@ -82,7 +96,9 @@ abstract final class Lander {
   /// delivered once: if [onDeepLink] or an earlier call already delivered it,
   /// this returns null, and once this has been called [onDeepLink] will not
   /// deliver it.
-  static Future<LanderLink?> getInitialLink() => _require('getInitialLink').getInitialLink();
+  ///
+  /// Throws [StateError] (through the Future) before [initialize].
+  static Future<LanderLink?> getInitialLink() async => _require('getInitialLink').getInitialLink();
 
   /// Creates a short link from inside the app, for share and invite flows.
   ///
@@ -105,7 +121,7 @@ abstract final class Lander {
     String? ogDescription,
     Uri? ogImageUrl,
     DateTime? expiresAt,
-  }) {
+  }) async {
     final client = _require('createLink');
     if (!path.startsWith('/')) {
       throw ArgumentError.value(path, 'path', 'must start with /');
@@ -148,7 +164,7 @@ abstract final class Lander {
   /// [LanderException] when the request fails after retries, or when the
   /// install could not be registered yet (`install_not_registered`; the
   /// registration is retried first).
-  static Future<LanderLink?> claimHandoff(String userId) {
+  static Future<LanderLink?> claimHandoff(String userId) async {
     final client = _require('claimHandoff');
     final id = userId.trim();
     if (id.isEmpty || id.length > 256) {
@@ -172,7 +188,7 @@ abstract final class Lander {
     String name, {
     Map<String, Object?> properties = const {},
     String? linkId,
-  }) =>
+  }) async =>
       _require('trackEvent').trackEvent(name, properties, linkId: linkId);
 
   /// The random ID Lander created for this install, once [initialize] has

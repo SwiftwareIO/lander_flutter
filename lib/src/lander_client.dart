@@ -224,7 +224,12 @@ class LanderClient with WidgetsBindingObserver {
         maxAttempts: _isFirstLaunch ? 3 : 1,
       );
       if (_isFirstLaunch) {
-        await _write(firstLaunchReportedKey, '1');
+        // If this marker is lost, the next launch reports a first launch again
+        // and gets the same deferred link a second time, so try harder than
+        // for other writes before the link is handed to the app.
+        if (!await _writeWithRetry(firstLaunchReportedKey, '1')) {
+          logger.log('Could not save the first launch marker; the next launch may get the deferred link again');
+        }
         _isFirstLaunch = false;
       }
       _registered = true;
@@ -438,6 +443,20 @@ class LanderClient with WidgetsBindingObserver {
     } catch (e) {
       logger.log('Storage write failed for $key: $e');
     }
+  }
+
+  /// [_write] with up to [attempts] tries. Never throws.
+  Future<bool> _writeWithRetry(String key, String value, {int attempts = 3}) async {
+    for (var i = 0; i < attempts; i++) {
+      try {
+        await platform.write(key, value);
+        return true;
+      } catch (e) {
+        logger.log('Storage write failed for $key (try ${i + 1} of $attempts): $e');
+        if (i < attempts - 1) await Future<void>.delayed(Duration(milliseconds: 100 * (i + 1)));
+      }
+    }
+    return false;
   }
 
   Future<T?> _safe<T>(Future<T?> Function() call, String what) async {

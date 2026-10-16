@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -36,6 +37,7 @@ class LanderFlutterPlugin :
     MethodCallHandler,
     EventChannel.StreamHandler,
     ActivityAware,
+    ActivityPluginBinding.OnSaveInstanceStateListener,
     PluginRegistry.NewIntentListener {
 
     private lateinit var context: Context
@@ -47,6 +49,7 @@ class LanderFlutterPlugin :
 
     // Link delivery state. Only touched on the main thread.
     private var launchIntentRead = false
+    private var launchIntentPending = false
     private var initialLinkRequested = false
     private var initialLink: String? = null
     private var sink: EventChannel.EventSink? = null
@@ -77,8 +80,34 @@ class LanderFlutterPlugin :
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         attach(binding)
         if (!launchIntentRead) {
+            // Read the launch intent once the activity has restored its state
+            // (later in the same onCreate), so a recreated activity can say the
+            // link was handled already. getInitialLink reads it first if needed.
+            launchIntentPending = true
+            mainHandler.post(::readLaunchIntent)
+        }
+    }
+
+    private fun readLaunchIntent() {
+        if (!launchIntentPending) return
+        launchIntentPending = false
+        launchIntentRead = true
+        linkFrom(activityBinding?.activity?.intent, isLaunchIntent = true)?.let(::onLaunchLink)
+    }
+
+    // OnSaveInstanceStateListener
+
+    override fun onSaveInstanceState(bundle: Bundle) {
+        bundle.putBoolean(LAUNCH_LINK_HANDLED, launchIntentRead || launchIntentPending)
+    }
+
+    override fun onRestoreInstanceState(bundle: Bundle?) {
+        // After process death Android recreates the activity with its original
+        // VIEW intent, without FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY. The saved
+        // state says that link was delivered before, so do not deliver it again.
+        if (bundle?.getBoolean(LAUNCH_LINK_HANDLED) == true && launchIntentPending) {
+            launchIntentPending = false
             launchIntentRead = true
-            linkFrom(binding.activity.intent, isLaunchIntent = true)?.let(::onLaunchLink)
         }
     }
 
@@ -94,15 +123,18 @@ class LanderFlutterPlugin :
         // The activity is gone for good. A new one on this (cached) engine has
         // its own launch intent, so read that one when it attaches.
         launchIntentRead = false
+        launchIntentPending = false
     }
 
     private fun attach(binding: ActivityPluginBinding) {
         activityBinding = binding
         binding.addOnNewIntentListener(this)
+        binding.addOnSaveStateListener(this)
     }
 
     private fun detach() {
         activityBinding?.removeOnNewIntentListener(this)
+        activityBinding?.removeOnSaveStateListener(this)
         activityBinding = null
     }
 
@@ -148,6 +180,7 @@ class LanderFlutterPlugin :
     override fun onMethodCall(call: MethodCall, result: Result) {
         when (call.method) {
             "getInitialLink" -> {
+                readLaunchIntent()
                 initialLinkRequested = true
                 result.success(initialLink)
                 initialLink = null
@@ -215,46 +248,70 @@ class LanderFlutterPlugin :
         fun reply(value: String?) {
             if (replied.compareAndSet(false, true)) mainHandler.post { result.success(value) }
         }
+        connectInstallReferrer(retriesLeft = 1, ::reply)
+    }
 
+    private fun connectInstallReferrer(retriesLeft: Int, reply: (String?) -> Unit) {
         val client = try {
             InstallReferrerClient.newBuilder(context).build()
         } catch (e: Exception) {
             reply(null)
             return
         }
+        val done = AtomicBoolean(false)
+        fun finish(value: String?, retry: Boolean = false) {
+            if (!done.compareAndSet(false, true)) return
+            try {
+                client.endConnection()
+            } catch (_: Exception) {
+            }
+            if (retry) {
+                // The Play Store service was busy or updating. Try once more shortly.
+                mainHandler.postDelayed({ connectInstallReferrer(retriesLeft - 1, reply) }, 1000)
+            } else {
+                reply(value)
+            }
+        }
         try {
             client.startConnection(object : InstallReferrerStateListener {
                 override fun onInstallReferrerSetupFinished(responseCode: Int) {
-                    val referrer = if (responseCode == InstallReferrerClient.InstallReferrerResponse.OK) {
-                        try {
-                            client.installReferrer.installReferrer
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Install referrer unavailable: ${e.message}")
-                            null
+                    when (responseCode) {
+                        InstallReferrerClient.InstallReferrerResponse.OK -> {
+                            // getInstallReferrer is a binder call; keep it off the main thread.
+                            try {
+                                io.execute {
+                                    val referrer = try {
+                                        client.installReferrer.installReferrer
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Install referrer unavailable: ${e.message}")
+                                        null
+                                    }
+                                    mainHandler.post { finish(referrer) }
+                                }
+                            } catch (e: java.util.concurrent.RejectedExecutionException) {
+                                finish(null)
+                            }
                         }
-                    } else {
-                        null
-                    }
-                    reply(referrer)
-                    try {
-                        client.endConnection()
-                    } catch (_: Exception) {
+                        InstallReferrerClient.InstallReferrerResponse.SERVICE_UNAVAILABLE ->
+                            finish(null, retry = retriesLeft > 0)
+                        else -> finish(null)
                     }
                 }
 
                 override fun onInstallReferrerServiceDisconnected() {
-                    reply(null)
+                    finish(null, retry = retriesLeft > 0)
                 }
             })
         } catch (e: Exception) {
             // Thrown on devices without the Play Store or with a broken one.
             Log.w(TAG, "Install referrer connection failed: ${e.message}")
-            reply(null)
+            finish(null)
         }
     }
 
     private companion object {
         const val TAG = "Lander"
         val KEY_PATTERN = Regex("^[a-z0-9_]{1,64}$")
+        const val LAUNCH_LINK_HANDLED = "lander_flutter.launch_link_handled"
     }
 }

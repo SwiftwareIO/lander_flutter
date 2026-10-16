@@ -25,6 +25,9 @@ class FakePlatform extends LanderPlatform {
   final StreamController<String> links = StreamController<String>.broadcast();
   int installReferrerCalls = 0;
 
+  /// Number of upcoming writes to each key that fail.
+  final Map<String, int> writeFailures = {};
+
   @override
   Future<String?> getInitialLink() async {
     final link = initialLink;
@@ -49,7 +52,14 @@ class FakePlatform extends LanderPlatform {
   Future<String?> read(String key) async => storage[key];
 
   @override
-  Future<void> write(String key, String value) async => storage[key] = value;
+  Future<void> write(String key, String value) async {
+    final failures = writeFailures[key] ?? 0;
+    if (failures > 0) {
+      writeFailures[key] = failures - 1;
+      throw Exception('disk full');
+    }
+    storage[key] = value;
+  }
 
   @override
   Future<void> delete(String key) async => storage.remove(key);

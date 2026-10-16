@@ -170,6 +170,22 @@ void main() {
       expect(body['osVersion'], 'x' * 50);
     });
 
+    test('a failed first launch marker write is retried before the deferred link is delivered', () async {
+      final api = FakeApi(handlers: {
+        '/v1/sdk/init': (r) => json({'installId': r.body['installId'], 'deferredLink': deferredSpring}),
+      });
+      final platform = FakePlatform(platform: 'android')..writeFailures[LanderClient.firstLaunchReportedKey] = 2;
+      final c = client(platform, api);
+      await started(c);
+      expect((await c.getInitialLink())?.linkId, deferredSpring['linkId']);
+      expect(platform.storage[LanderClient.firstLaunchReportedKey], '1');
+
+      // So the next launch is not a first launch and gets no deferred link again.
+      final api2 = FakeApi();
+      await started(client(platform, api2));
+      expect(api2.to('/v1/sdk/init').single.body['isFirstLaunch'], false);
+    });
+
     test('getInitialLink delivers the launch link once', () async {
       final api = FakeApi(handlers: {
         '/v1/sdk/init': (r) => json({'installId': r.body['installId'], 'deferredLink': deferredSpring}),

@@ -1,6 +1,6 @@
 name: lander_flutter
 description: "Deep linking without the fuss: receive, resolve and create Lander links, and report opens and conversions from Flutter apps."
-version: 0.2.1
+version: 0.3.0
 homepage: https://golander.link
 repository: https://github.com/SwiftwareIO/lander_flutter
 issue_tracker: https://github.com/SwiftwareIO/lander_flutter/issues

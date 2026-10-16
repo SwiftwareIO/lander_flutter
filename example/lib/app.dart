@@ -9,6 +9,9 @@ import 'screens.dart';
 /// The most recent link, shown on the home screen for debugging.
 final lastLink = ValueNotifier<LanderLink?>(null);
 
+/// Lander's install ID, set once `Lander.initialize` completes.
+final installId = ValueNotifier<String?>(null);
+
 GoRouter buildRouter({String initialLocation = '/'}) => GoRouter(
       initialLocation: initialLocation,
       routes: [
@@ -50,6 +53,8 @@ class _ShopAppState extends State<ShopApp> {
     // (including the one that launched the app) until someone listens.
     _links = Lander.onDeepLink.listen((link) {
       lastLink.value = link;
+      // Probabilistic links are a good guess, not proof: open the screen, but
+      // the product screen does not act on them (see isSuggestion there).
       _router.go(link.route, extra: link);
     });
   }

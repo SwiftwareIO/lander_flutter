@@ -75,7 +75,10 @@ public final class LanderFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHa
     _ scene: UIScene, willConnectTo session: UISceneSession,
     options connectionOptions: UIScene.ConnectionOptions?
   ) -> Bool {
-    // Cold start: the URL arrives here, not through the methods below.
+    // Cold start: the URL arrives here, not through the methods below. If a
+    // plugin registered earlier returned true, Flutter passes nil options to
+    // the rest, and UIKit offers no other way to read them, so the launch link
+    // is not seen (see the troubleshooting docs).
     guard let options = connectionOptions else { return false }
     for activity in options.userActivities { receive(activity) }
     for context in options.urlContexts { receive(context.url) }
@@ -182,6 +185,11 @@ public final class LanderFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHa
     ).appendingPathComponent("lander_flutter", isDirectory: true)
     if !FileManager.default.fileExists(atPath: dir.path) {
       try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+    // Checked on every access, not only on creation: the flag can be lost when
+    // the directory is restored or migrated, and the install ID must never
+    // move to another device.
+    if (try? dir.resourceValues(forKeys: [.isExcludedFromBackupKey]))?.isExcludedFromBackup != true {
       var values = URLResourceValues()
       values.isExcludedFromBackup = true
       try dir.setResourceValues(values)
