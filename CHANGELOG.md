@@ -1,3 +1,8 @@
+## 0.4.0
+
+* **`Lander.setUserId`:** ties the events you track and the links that open the app to one of your users. Call it after sign in and with `null` on sign out; the ID is remembered across launches and each event keeps the user that was set when it was tracked. Lander stores it as sent and shows it in the dashboard's Live events and in webhooks (`userId`), so pass an opaque ID, not an email address. `Lander.userId` returns the current one.
+* iOS: the privacy manifest now declares Product Interaction as linked to the user, and User ID with the Analytics purpose too, because events can carry the user ID. If you never call `setUserId`, you can report Product Interaction as not linked.
+
 ## 0.3.0
 
 Fixes, with three behavior changes to check when upgrading:
