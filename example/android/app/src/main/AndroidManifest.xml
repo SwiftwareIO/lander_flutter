@@ -33,7 +33,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="acme.lander.link" />
+                <data android:scheme="https" android:host="acme.golander.link" />
             </intent-filter>
             <!-- Lander: custom scheme fallback, for example acmeshop://product/123 -->
             <intent-filter>

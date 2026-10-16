@@ -1,6 +1,6 @@
 # lander_flutter
 
-Deep linking without the fuss. The Flutter SDK for [Lander](https://lander.link): receive Universal Links, App Links and custom scheme URLs, resolve them to the link you created in Lander, create short links from inside the app, and report conversions.
+Deep linking without the fuss. The Flutter SDK for [Lander](https://golander.link): receive Universal Links, App Links and custom scheme URLs, resolve them to the link you created in Lander, create short links from inside the app, and report conversions.
 
 - One stream for every link: cold start, warm start, deferred (after install).
 - Every link says how sure Lander is: `deterministic`, `probabilistic` or `unattributed`.
@@ -60,7 +60,7 @@ _sub = Lander.onDeepLink.listen((link) {
 |---|---|
 | `uri` | The URL that opened the app, exactly as the OS delivered it |
 | `linkId` | Lander link ID, or `null` when the link is unknown to Lander |
-| `url` | Canonical short link, for example `https://acme.lander.link/p-123` |
+| `url` | Canonical short link, for example `https://acme.golander.link/p-123` |
 | `path` | The in app route set on the link, for example `/product/123` |
 | `params` | Link params, with the opened URL's query parameters merged over them |
 | `campaign`, `channel` | Attribution labels set on the link |
@@ -172,7 +172,7 @@ In `android/app/src/main/AndroidManifest.xml`, inside your main `<activity>`:
     <action android:name="android.intent.action.VIEW" />
     <category android:name="android.intent.category.DEFAULT" />
     <category android:name="android.intent.category.BROWSABLE" />
-    <data android:scheme="https" android:host="acme.lander.link" />
+    <data android:scheme="https" android:host="acme.golander.link" />
 </intent-filter>
 
 <!-- Optional: custom scheme -->
@@ -196,12 +196,12 @@ On first launch the SDK reads the [Play Install Referrer](https://developer.andr
 
 ## iOS setup
 
-1. **Associated Domains.** In Xcode, add the Associated Domains capability to the Runner target with `applinks:acme.lander.link`. This creates `Runner/Runner.entitlements`:
+1. **Associated Domains.** In Xcode, add the Associated Domains capability to the Runner target with `applinks:acme.golander.link`. This creates `Runner/Runner.entitlements`:
 
    ```xml
    <key>com.apple.developer.associated-domains</key>
    <array>
-       <string>applinks:acme.lander.link</string>
+       <string>applinks:acme.golander.link</string>
    </array>
    ```
 
@@ -257,18 +257,18 @@ Plain HTTP needs `android:usesCleartextTraffic="true"` in your debug manifest on
 Open a link without tapping one:
 
 ```bash
-xcrun simctl openurl booted "https://acme.lander.link/p-123"
+xcrun simctl openurl booted "https://acme.golander.link/p-123"
 ```
 
 ```bash
-adb shell am start -a android.intent.action.VIEW -d "https://acme.lander.link/p-123" com.acme.shop
+adb shell am start -a android.intent.action.VIEW -d "https://acme.golander.link/p-123" com.acme.shop
 ```
 
 On the iOS simulator a Universal Link only opens the app when the domain's apple-app-site-association file is reachable; use the custom scheme (`acmeshop://product/123`) to test routing locally.
 
 ## Example
 
-[`example/`](example) is "Acme Shop", a go_router app with a product screen at `/product/:id`. The seeded link `https://acme.lander.link/p-123` resolves to `/product/123`. It shows what Lander resolved for each link, creates share links and tracks purchases.
+[`example/`](example) is "Acme Shop", a go_router app with a product screen at `/product/:id`. The seeded link `https://acme.golander.link/p-123` resolves to `/product/123`. It shows what Lander resolved for each link, creates share links and tracks purchases.
 
 ```bash
 cd example

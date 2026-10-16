@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lander_flutter/lander_flutter.dart';
 import 'package:lander_flutter/src/link_dispatcher.dart';
 
-LanderLink link(String path) => LanderLink.unresolved(Uri.parse('https://acme.lander.link$path'));
+LanderLink link(String path) => LanderLink.unresolved(Uri.parse('https://acme.golander.link$path'));
 
 void main() {
   test('buffers links until the first listener, then replays them in order', () async {

@@ -10,7 +10,7 @@ const landerApiKey = 'pk_test_DemoPublishableKey000000000000';
 
 /// The local API from `pnpm dev`. The Android emulator reaches the host at
 /// 10.0.2.2; the iOS simulator shares the host's localhost. Override with
-/// `--dart-define=LANDER_BASE_URL=https://api.lander.link`.
+/// `--dart-define=LANDER_BASE_URL=https://api.golander.link`.
 String get landerBaseUrl {
   const override = String.fromEnvironment('LANDER_BASE_URL');
   if (override.isNotEmpty) return override;

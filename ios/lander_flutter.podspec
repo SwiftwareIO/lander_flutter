@@ -9,9 +9,9 @@ Pod::Spec.new do |s|
   s.description      = <<-DESC
 Deep linking without the fuss: receive, resolve and create Lander links in Flutter apps.
                        DESC
-  s.homepage         = 'https://lander.link'
+  s.homepage         = 'https://golander.link'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'Lander' => 'sdk@lander.link' }
+  s.author           = { 'Lander' => 'sdk@golander.link' }
   s.source           = { :path => '.' }
   s.source_files = 'lander_flutter/Sources/lander_flutter/**/*.swift'
   s.dependency 'Flutter'

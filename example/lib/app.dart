@@ -17,7 +17,7 @@ GoRouter buildRouter({String initialLocation = '/'}) => GoRouter(
           builder: (context, state) => const HomeScreen(),
           routes: [
             GoRoute(
-              // https://acme.lander.link/p-123 resolves to /product/123.
+              // https://acme.golander.link/p-123 resolves to /product/123.
               path: 'product/:id',
               builder: (context, state) => ProductScreen(
                 id: state.pathParameters['id']!,
