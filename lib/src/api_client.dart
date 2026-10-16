@@ -42,6 +42,7 @@ class LanderApi {
     required LanderLogger logger,
     this.timeout = const Duration(seconds: 10),
     this.backoff = const Backoff(base: Duration(milliseconds: 500), max: Duration(seconds: 4)),
+    this.maxRetryWait = const Duration(seconds: 10),
   })  : _apiKey = apiKey,
         _baseUrl = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl,
         _client = client,
@@ -58,11 +59,19 @@ class LanderApi {
   /// Backoff between attempts of [post] when `maxAttempts > 1`.
   final Backoff backoff;
 
+  /// Total time one [post] may wait between its attempts. Callers of [post]
+  /// are waiting on the answer (a share button, the first screen), so a longer
+  /// `Retry-After` ends the retries and the error, with its
+  /// [LanderException.retryAfter], goes to the caller instead.
+  final Duration maxRetryWait;
+
   /// POSTs [body] as JSON and returns the decoded response object.
   ///
   /// Retries retryable failures (network errors, timeouts, 408, 429, 5xx) up to
   /// [maxAttempts] times, reusing the same [idempotencyKey] so the server can
-  /// drop duplicates. Throws [LanderException] on failure.
+  /// drop duplicates, and waiting at most [maxRetryWait] in total. A 2xx
+  /// response must be a JSON object (except 204). Throws [LanderException] on
+  /// failure.
   Future<Map<String, Object?>> post(
     String path,
     Map<String, Object?> body, {
@@ -71,6 +80,7 @@ class LanderApi {
     int maxAttempts = 1,
   }) async {
     var attempt = 0;
+    var waited = Duration.zero;
     while (true) {
       try {
         return await _postOnce(path, body, idempotencyKey: idempotencyKey, headers: headers);
@@ -80,6 +90,11 @@ class LanderApi {
         var wait = backoff.delay(attempt - 1);
         final retryAfter = e.retryAfter;
         if (retryAfter != null && retryAfter > wait) wait = retryAfter;
+        if (waited + wait > maxRetryWait) {
+          _logger.log('POST $path failed (${e.code}), not retrying: next try in ${wait.inSeconds}s');
+          rethrow;
+        }
+        waited += wait;
         _logger.log('POST $path failed (${e.code}), retrying in ${wait.inMilliseconds} ms');
         await Future<void>.delayed(wait);
       }
@@ -115,9 +130,19 @@ class LanderApi {
       throw LanderException(code: 'network_error', message: 'POST $path failed: $e');
     }
 
-    final json = _decode(res.body);
+    // The API sends `application/json` without a charset, which `res.body`
+    // would decode as Latin-1. JSON is UTF-8.
+    final json = _decode(utf8.decode(res.bodyBytes, allowMalformed: true));
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      return json ?? const {};
+      if (json != null) return json;
+      if (res.statusCode == 204) return const {};
+      // For example a captive portal or proxy page. Treating it as success
+      // would, for init, mark the first launch reported and lose a deferred link.
+      throw LanderException(
+        statusCode: res.statusCode,
+        code: 'invalid_response',
+        message: 'POST $path returned ${res.statusCode} without a JSON object',
+      );
     }
     final error = json?['error'];
     throw LanderException(

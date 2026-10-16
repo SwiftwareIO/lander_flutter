@@ -56,6 +56,9 @@ class LanderClient with WidgetsBindingObserver {
   /// Android can report the same launch URL through more than one callback.
   static const duplicateLinkWindow = Duration(seconds: 2);
 
+  /// Longest `appVersion` and `osVersion` the API accepts.
+  static const maxVersionLength = 50;
+
   final LinkDispatcher dispatcher;
   final LanderPlatform platform;
   final LanderLogger logger;
@@ -74,6 +77,8 @@ class LanderClient with WidgetsBindingObserver {
   /// earlier launch). Events wait for it: the API rejects events from
   /// unknown installs.
   bool _registered = false;
+  Future<void>? _registering;
+  bool _hasInitialLink = false;
   bool _reRegisterTried = false;
   bool _conflictRetried = false;
   String? _lastRawLink;
@@ -93,6 +98,7 @@ class LanderClient with WidgetsBindingObserver {
 
     final initialRaw = await _safe(platform.getInitialLink, 'getInitialLink');
     final hasInitial = initialRaw != null && initialRaw.isNotEmpty;
+    _hasInitialLink = hasInitial;
     if (hasInitial) {
       _onRawLink(initialRaw, initial: true);
     } else if (!_isFirstLaunch) {
@@ -146,17 +152,40 @@ class LanderClient with WidgetsBindingObserver {
 
   Future<void> _init({required bool hasInitialLink}) async {
     try {
-      final json = await _register();
-      final deferred = json?['deferredLink'];
-      if (deferred is Map<String, Object?> && !hasInitialLink) {
-        final link = LanderLink.fromJson(deferred);
-        logger.log('Deferred link: $link');
-        dispatcher.setInitialLink(link);
-      }
+      await _registerOnce();
+    } catch (e) {
+      logger.log('Init failed unexpectedly: $e');
     } finally {
       if (!hasInitialLink && !dispatcher.initialSettled) dispatcher.setInitialLink(null);
       if (!_initDone.isCompleted) _initDone.complete();
     }
+  }
+
+  /// Registers the install and hands a deferred link from the response to the
+  /// app. Concurrent callers share one request. Never throws.
+  Future<void> _registerOnce() => _registering ??= _registerAndDeliver().whenComplete(() => _registering = null);
+
+  Future<void> _registerAndDeliver() async {
+    final json = await _register();
+    try {
+      final deferred = json?['deferredLink'];
+      // A link that opened the app wins over a deferred one.
+      if (deferred is! Map<String, Object?> || _hasInitialLink) return;
+      final link = LanderLink.fromJson(deferred);
+      logger.log('Deferred link: $link');
+      // Once the launch link is settled (a retried init that succeeded later
+      // in the session), this delivers it on onDeepLink instead.
+      dispatcher.setInitialLink(link);
+    } catch (e) {
+      logger.log('Could not read the deferred link: $e');
+    }
+  }
+
+  /// Retries the registration if no init has succeeded yet, for example after
+  /// a first launch offline. Returns whether the install is registered.
+  Future<bool> _ensureRegistered() async {
+    if (!_registered) await _registerOnce();
+    return _registered;
   }
 
   /// `POST /v1/sdk/init`. Returns the response, or null on failure. Never throws.
@@ -177,14 +206,15 @@ class LanderClient with WidgetsBindingObserver {
         if (referrer != null && referrer.length > 2048) referrer = referrer.substring(0, 2048);
       }
 
+      final osVersion = info.osVersion == null ? null : _truncate(info.osVersion!);
       final json = await api.post(
         '/v1/sdk/init',
         {
           'installId': _installId,
           'platform': info.platform,
-          'appVersion': info.appVersion,
+          'appVersion': _truncate(info.appVersion),
           'sdkVersion': landerSdkVersion,
-          'osVersion': ?info.osVersion,
+          'osVersion': ?osVersion,
           'isFirstLaunch': _isFirstLaunch,
           if (referrer != null && referrer.isNotEmpty) 'installReferrer': referrer,
         },
@@ -218,6 +248,9 @@ class LanderClient with WidgetsBindingObserver {
       return null;
     }
   }
+
+  static String _truncate(String version) =>
+      version.length > maxVersionLength ? version.substring(0, maxVersionLength) : version;
 
   void _onRawLink(String raw, {bool initial = false}) {
     final now = DateTime.now();
@@ -286,9 +319,10 @@ class LanderClient with WidgetsBindingObserver {
   /// `onDeepLink`, so the app navigates once.
   Future<LanderLink?> claimHandoff(String userId) async {
     await _ready;
-    // The API only knows installs that went through init.
+    // The API only knows installs that went through init. If it failed, try
+    // again now.
     await initDone;
-    if (!_registered) {
+    if (!await _ensureRegistered()) {
       throw const LanderException(
         code: 'install_not_registered',
         message: 'Lander could not register this install yet (offline?); try again later',
@@ -307,10 +341,10 @@ class LanderClient with WidgetsBindingObserver {
       logger.log('No pending handoff');
       return null;
     }
-    if (deferred is! Map<String, Object?>) {
+    final link = deferred is Map<String, Object?> ? LanderLink.fromJson(deferred) : null;
+    if (link == null || !link.isResolved) {
       throw const LanderException(code: 'invalid_response', message: 'Unexpected claimHandoff response');
     }
-    final link = LanderLink.fromJson(deferred);
     logger.log('Handoff: $link');
     return link;
   }
@@ -359,7 +393,9 @@ class LanderClient with WidgetsBindingObserver {
 
   Future<void> _sendEvents(List<Map<String, Object?>> batch) async {
     await _ready;
-    if (!_registered) {
+    // An init that failed is retried here, so events do not wait for the next
+    // launch.
+    if (!await _ensureRegistered()) {
       // Retried with backoff, and flushed as soon as init succeeds.
       throw const LanderException(code: 'install_not_registered', message: 'Waiting for init to succeed');
     }
@@ -378,7 +414,7 @@ class LanderClient with WidgetsBindingObserver {
       _registered = false;
       _isFirstLaunch = true;
       logger.log('API does not know this install, registering it again');
-      unawaited(_register());
+      unawaited(_registerOnce());
       throw LanderException(code: e.code, message: e.message);
     }
   }
@@ -387,6 +423,10 @@ class LanderClient with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
       unawaited(events.flush());
+    } else if (state == AppLifecycleState.resumed && !_registered) {
+      // The init at launch failed (offline?). Back in the foreground is a good
+      // moment to try again, without waiting for the next launch.
+      unawaited(_registerOnce());
     }
   }
 

@@ -1,1 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The SDK talks to the Lander API. Merged into the app's manifest, so
+         release builds can reach the network without the app declaring it. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+</manifest>

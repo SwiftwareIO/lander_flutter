@@ -56,25 +56,28 @@ class LanderLink {
 
   /// Builds a link from a `ResolvedLink` JSON object. [uri] is the URL that
   /// opened the app; for deferred links it falls back to the link's own URL.
+  ///
+  /// Never throws: fields of an unexpected type are treated as missing, so a
+  /// partly malformed response still delivers what it can.
   factory LanderLink.fromJson(Map<String, Object?> json, {Uri? uri}) {
-    final url = json['url'] as String?;
+    final url = _string(json['url']);
     final params = json['params'];
     return LanderLink(
-      uri: uri ?? Uri.parse(url ?? ''),
-      linkId: json['linkId'] as String?,
+      uri: uri ?? (url == null ? null : Uri.tryParse(url)) ?? Uri(),
+      linkId: _string(json['linkId']),
       url: url,
-      path: json['path'] as String?,
+      path: _string(json['path']),
       params: params is Map
           ? Map.unmodifiable(<String, Object>{
               for (final e in params.entries)
-                if (e.value != null) '${e.key}': e.value as Object,
+                if (e.value is String || e.value is num || e.value is bool) '${e.key}': e.value as Object,
             })
           : const {},
-      campaign: json['campaign'] as String?,
-      channel: json['channel'] as String?,
+      campaign: _string(json['campaign']),
+      channel: _string(json['channel']),
       isDeferred: json['isDeferred'] == true,
       confidence: LanderConfidence.parse(json['confidence']),
-      method: json['method'] as String?,
+      method: _string(json['method']),
     );
   }
 
@@ -240,7 +243,13 @@ class LanderException implements Exception {
   final Duration? retryAfter;
 
   /// Whether retrying the same request later may succeed.
+  ///
+  /// `link_quota_exceeded` is a 429 but frees up only as the rolling 24 hour
+  /// window moves, so retrying soon cannot help. `invalid_response` usually
+  /// comes from something between the app and Lander (a captive portal).
   bool get isRetryable {
+    if (code == 'link_quota_exceeded') return false;
+    if (code == 'invalid_response') return true;
     final s = statusCode;
     return s == null || s == 408 || s == 429 || s >= 500;
   }
@@ -251,3 +260,5 @@ class LanderException implements Exception {
 }
 
 DateTime? _date(Object? v) => v is String ? DateTime.tryParse(v) : null;
+
+String? _string(Object? v) => v is String ? v : null;

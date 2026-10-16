@@ -11,12 +11,16 @@ class FakePlatform extends LanderPlatform {
     this.initialLink,
     this.platform = 'ios',
     this.installReferrer,
+    this.appVersion = '2.4.0',
+    this.osVersion = '18.1',
     Map<String, String>? storage,
   }) : storage = storage ?? {};
 
   String? initialLink;
   final String platform;
   final String? installReferrer;
+  final String appVersion;
+  final String osVersion;
   final Map<String, String> storage;
   final StreamController<String> links = StreamController<String>.broadcast();
   int installReferrerCalls = 0;
@@ -33,7 +37,7 @@ class FakePlatform extends LanderPlatform {
 
   @override
   Future<LanderPlatformInfo> getPlatformInfo() async =>
-      LanderPlatformInfo(platform: platform, appVersion: '2.4.0', osVersion: '18.1');
+      LanderPlatformInfo(platform: platform, appVersion: appVersion, osVersion: osVersion);
 
   @override
   Future<String?> getInstallReferrer() async {

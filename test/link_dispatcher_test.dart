@@ -62,12 +62,22 @@ void main() {
     d.setInitialLink(link('/launch'));
     d.add(link('/later'));
     expect((await d.takeInitialLink())?.uri.path, '/launch');
-    expect((await d.takeInitialLink())?.uri.path, '/launch', reason: 'stable for repeated calls');
+    expect(await d.takeInitialLink(), isNull, reason: 'delivered once');
 
     final got = <String>[];
     d.stream.listen((l) => got.add(l.uri.path));
     await pumpEventQueue();
     expect(got, ['/later']);
+  });
+
+  test('concurrent getInitialLink calls get the launch link once', () async {
+    final d = LinkDispatcher();
+    final first = d.takeInitialLink();
+    final second = d.takeInitialLink();
+    d.setInitialLink(link('/launch'));
+    final results = await Future.wait([first, second]);
+    expect(results.whereType<LanderLink>().map((l) => l.uri.path), ['/launch']);
+    expect(await d.takeInitialLink(), isNull);
   });
 
   test('getInitialLink waits until the launch link is known', () async {

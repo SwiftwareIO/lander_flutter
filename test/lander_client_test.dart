@@ -132,6 +132,118 @@ void main() {
     });
   });
 
+  group('init robustness', () {
+    test('a malformed deferred link is still delivered, without an uncaught error', () async {
+      final api = FakeApi(handlers: {
+        '/v1/sdk/init': (r) => json({
+              'installId': r.body['installId'],
+              'deferredLink': {...deferredSpring, 'url': 42, 'params': 'discount=15', 'campaign': 7},
+            }),
+      });
+      final c = client(FakePlatform(platform: 'android'), api);
+      await started(c);
+      final link = await c.getInitialLink();
+      expect(link?.linkId, deferredSpring['linkId']);
+      expect(link?.route, '/sale/spring');
+      expect(link?.isDeferred, isTrue);
+      expect(link?.params, isEmpty);
+    });
+
+    test('a 2xx init that is not JSON does not count as the first launch report', () async {
+      final platform = FakePlatform();
+      final portal = FakeApi(handlers: {'/v1/sdk/init': (r) => http.Response('<html>Sign in to Wi-Fi</html>', 200)});
+      await started(client(platform, portal));
+      expect(platform.storage[LanderClient.firstLaunchReportedKey], isNull);
+
+      final up = FakeApi();
+      await started(client(platform, up));
+      expect(up.to('/v1/sdk/init').single.body['isFirstLaunch'], true);
+      expect(platform.storage[LanderClient.firstLaunchReportedKey], '1');
+    });
+
+    test('appVersion and osVersion are cut to the 50 characters the API accepts', () async {
+      final api = FakeApi();
+      final long = '1.0.0+${'b' * 60}';
+      await started(client(FakePlatform(appVersion: long, osVersion: 'x' * 80), api));
+      final body = api.to('/v1/sdk/init').single.body;
+      expect(body['appVersion'], long.substring(0, 50));
+      expect(body['osVersion'], 'x' * 50);
+    });
+
+    test('getInitialLink delivers the launch link once', () async {
+      final api = FakeApi(handlers: {
+        '/v1/sdk/init': (r) => json({'installId': r.body['installId'], 'deferredLink': deferredSpring}),
+      });
+      final c = client(FakePlatform(platform: 'android'), api);
+      await started(c);
+      expect((await c.getInitialLink())?.linkId, deferredSpring['linkId']);
+      expect(await c.getInitialLink(), isNull);
+    });
+  });
+
+  group('registration retry', () {
+    FakeApi flakyInit({required bool Function() up, Object? deferredLink}) => FakeApi(handlers: {
+          '/v1/sdk/init': (r) => up()
+              ? json({'installId': r.body['installId'], 'deferredLink': deferredLink})
+              : throw http.ClientException('offline'),
+          '/v1/sdk/handoffs/claim': (r) => json({'deferredLink': null}),
+        });
+
+    test('a failed first launch init is retried when the app resumes, once at a time', () async {
+      var up = false;
+      final api = flakyInit(up: () => up, deferredLink: deferredSpring);
+      final platform = FakePlatform(platform: 'android');
+      final c = client(platform, api);
+      final got = <LanderLink>[];
+      c.dispatcher.stream.listen(got.add);
+      await started(c);
+      expect(await c.getInitialLink(), isNull);
+      final failed = api.to('/v1/sdk/init').length;
+
+      up = true;
+      c.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      c.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await pumpEventQueue();
+
+      expect(api.to('/v1/sdk/init'), hasLength(failed + 1), reason: 'concurrent retries share one request');
+      expect(api.to('/v1/sdk/init').last.body['isFirstLaunch'], true);
+      expect(platform.storage[LanderClient.firstLaunchReportedKey], '1');
+      expect(got.map((l) => l.linkId), [deferredSpring['linkId']], reason: 'late deferred link goes to the stream');
+
+      c.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await pumpEventQueue();
+      expect(api.to('/v1/sdk/init'), hasLength(failed + 1), reason: 'no retry once registered');
+    });
+
+    test('claimHandoff retries a failed init before giving up', () async {
+      var up = false;
+      final api = flakyInit(up: () => up);
+      final c = client(FakePlatform(), api);
+      await started(c);
+      final failed = api.to('/v1/sdk/init').length;
+
+      up = true;
+      expect(await c.claimHandoff('user_8f2c'), isNull);
+      expect(api.to('/v1/sdk/init'), hasLength(failed + 1));
+      expect(api.to('/v1/sdk/handoffs/claim'), hasLength(1));
+    });
+
+    test('queued events retry a failed init in the same session', () async {
+      var up = false;
+      final api = flakyInit(up: () => up);
+      final c = client(FakePlatform(), api);
+      await started(c);
+      await c.trackEvent('purchase', {});
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(api.to('/v1/sdk/events'), isEmpty);
+
+      up = true;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(api.to('/v1/sdk/events'), hasLength(1));
+      expect(c.events.pending, isEmpty);
+    });
+  });
+
   group('deferred deep linking', () {
     FakeApi deferredApi([Map<String, Object?> link = deferredSpring]) => FakeApi(handlers: {
           '/v1/sdk/init': (r) => json({
@@ -282,6 +394,34 @@ void main() {
       await started(c2);
       await expectLater(c2.claimHandoff('u'), throwsA(isA<LanderException>()));
       expect(down.to('/v1/sdk/handoffs/claim'), hasLength(3));
+    });
+
+    test('a malformed handoff response throws LanderException, not a TypeError', () async {
+      for (final deferredLink in [
+        {'linkId': 7},
+        'https://acme.golander.link/spring-sale',
+        <String, Object?>{},
+      ]) {
+        final api = FakeApi(handlers: {'/v1/sdk/handoffs/claim': (r) => json({'deferredLink': deferredLink})});
+        final c = client(FakePlatform(), api);
+        await started(c);
+        await expectLater(
+          c.claimHandoff('u'),
+          throwsA(isA<LanderException>().having((e) => e.code, 'code', 'invalid_response')),
+          reason: '$deferredLink',
+        );
+      }
+    });
+
+    test('a handoff with a field of the wrong type still returns the link', () async {
+      final api = FakeApi(handlers: {
+        '/v1/sdk/handoffs/claim': (r) => json({'deferredLink': {...handoff, 'url': 42, 'channel': 1}}),
+      });
+      final c = client(FakePlatform(), api);
+      await started(c);
+      final link = await c.claimHandoff('u');
+      expect(link?.linkId, deferredSpring['linkId']);
+      expect(link?.route, '/sale/spring');
     });
 
     test('throws install_not_registered when init never succeeded', () async {

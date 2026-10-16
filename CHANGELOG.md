@@ -1,3 +1,19 @@
+## 0.2.1
+
+Fixes.
+
+* Android: the plugin now declares the `INTERNET` permission, so release builds reach the Lander API even when the app's own manifest does not ask for it (Flutter only adds it to debug and profile builds).
+* A failed first launch report (offline at first launch) is retried in the same session: when the app returns to the foreground, before `claimHandoff`, and before queued events are sent. Concurrent retries share one request. A deferred link that comes back then arrives on `onDeepLink`.
+* A deferred or handed off link with a field of an unexpected type no longer throws inside the SDK and loses the link: the field is treated as missing. `claimHandoff` throws `LanderException` (`invalid_response`) instead of a `TypeError` for a response it cannot use.
+* `getInitialLink()` returns the launch link once; later calls return `null`, as documented.
+* Interactive calls (`createLink`, `claimHandoff`, launch report, link resolve) wait at most 10 seconds in total between retries. A longer `Retry-After` ends the retries and the `LanderException` carries `retryAfter`. `link_quota_exceeded` is no longer retried.
+* Responses are decoded as UTF-8 whatever the `Content-Type` says, so non-ASCII titles and params are no longer garbled with older `http` versions.
+* A 2xx response that is not a JSON object (for example a captive portal page) is an `invalid_response` error instead of a success. Before, it marked the first launch as reported and lost a deferred link.
+* `appVersion` and `osVersion` are cut to the 50 characters the API accepts, so a long build name no longer makes every launch report fail.
+* Android: a new activity on a cached Flutter engine gets its own launch link.
+* iOS: the privacy manifest declares User ID (linked to the user, App Functionality), sent by `claimHandoff`.
+* `sdkVersion` reported as `0.2.1`.
+
 ## 0.2.0
 
 Deferred deep linking.

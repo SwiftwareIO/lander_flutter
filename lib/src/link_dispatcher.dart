@@ -9,7 +9,7 @@ import 'models.dart';
 ///   links that arrive before the router is ready.
 /// * The link that launched the app is delivered exactly once: through
 ///   [takeInitialLink] when the app asks for it before the stream delivered it,
-///   otherwise through [stream].
+///   otherwise through [stream]. Later [takeInitialLink] calls return null.
 class LinkDispatcher {
   LinkDispatcher() {
     _controller = StreamController<LanderLink>.broadcast(onListen: _drain);
@@ -20,6 +20,7 @@ class LinkDispatcher {
   final Completer<LanderLink?> _initial = Completer();
   bool _initialRequested = false;
   bool _initialOnStream = false;
+  bool _initialTaken = false;
 
   Stream<LanderLink> get stream => _controller.stream;
 
@@ -40,11 +41,13 @@ class LinkDispatcher {
   /// Delivers a link that arrived while the app was running.
   void add(LanderLink link) => _emit(_Pending(link));
 
-  /// Returns the launch link unless the stream already delivered it.
+  /// Returns the launch link unless the stream or an earlier call already
+  /// delivered it.
   Future<LanderLink?> takeInitialLink() async {
     _initialRequested = true;
     final link = await _initial.future;
-    if (_initialOnStream) return null;
+    if (_initialOnStream || _initialTaken) return null;
+    _initialTaken = true;
     _buffer.removeWhere((p) => p.initial);
     return link;
   }

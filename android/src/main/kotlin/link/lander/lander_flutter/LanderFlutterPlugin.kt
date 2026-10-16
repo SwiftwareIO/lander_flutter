@@ -89,7 +89,12 @@ class LanderFlutterPlugin :
 
     override fun onDetachedFromActivityForConfigChanges() = detach()
 
-    override fun onDetachedFromActivity() = detach()
+    override fun onDetachedFromActivity() {
+        detach()
+        // The activity is gone for good. A new one on this (cached) engine has
+        // its own launch intent, so read that one when it attaches.
+        launchIntentRead = false
+    }
 
     private fun attach(binding: ActivityPluginBinding) {
         activityBinding = binding

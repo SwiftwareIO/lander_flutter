@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -104,6 +105,98 @@ void main() {
       expect(result, {'ok': 1});
       expect(fake.requests.map((r) => r.headers['Idempotency-Key']), everyElement('same'));
     });
+  });
+
+  test('decodes the body as UTF-8 when the response names no charset', () async {
+    // Older http versions decode both as Latin-1; current ones only the second.
+    for (final headers in [{'content-type': 'application/json'}, <String, String>{}]) {
+      final client = MockClient(
+        (_) async => http.Response.bytes(utf8.encode(jsonEncode({'title': 'Café ☕ für Ümit'})), 200, headers: headers),
+      );
+      expect(await api(client).post('/x', {}), {'title': 'Café ☕ für Ümit'}, reason: '$headers');
+    }
+  });
+
+  test('a 2xx response that is not a JSON object is an invalid_response', () async {
+    for (final body in ['<html>Sign in to Wi-Fi</html>', '', '[1, 2]']) {
+      final client = MockClient((_) async => http.Response(body, 200));
+      await expectLater(
+        api(client).post('/x', {}),
+        throwsA(isA<LanderException>()
+            .having((e) => e.code, 'code', 'invalid_response')
+            .having((e) => e.statusCode, 'statusCode', 200)),
+        reason: body,
+      );
+    }
+  });
+
+  test('a 204 without a body is a success', () async {
+    final client = MockClient((_) async => http.Response('', 204));
+    expect(await api(client).post('/x', {}), isEmpty);
+  });
+
+  test('does not wait for a Retry-After longer than maxRetryWait', () async {
+    final fake = FakeApi(handlers: {
+      '/x': (r) => json({'error': {'code': 'rate_limited', 'message': 'Slow down'}}, 429, {'retry-after': '3600'}),
+    });
+    final stopwatch = Stopwatch()..start();
+    await expectLater(
+      api(fake.client).post('/x', {}, maxAttempts: 3),
+      throwsA(isA<LanderException>().having((e) => e.retryAfter, 'retryAfter', const Duration(hours: 1))),
+    );
+    expect(fake.requests, hasLength(1));
+    expect(stopwatch.elapsed, lessThan(const Duration(seconds: 5)));
+  });
+
+  test('honors a short Retry-After within maxRetryWait', () {
+    fakeAsync((async) {
+      var calls = 0;
+      final fake = FakeApi(handlers: {
+        '/x': (r) => ++calls < 2
+            ? json({'error': {'code': 'rate_limited', 'message': 'Slow down'}}, 429, {'retry-after': '3'})
+            : json({'ok': 1}),
+      });
+      Map<String, Object?>? result;
+      api(fake.client).post('/x', {}, maxAttempts: 3).then((r) => result = r);
+      async.elapse(const Duration(milliseconds: 2900));
+      expect(fake.requests, hasLength(1));
+      async.elapse(const Duration(milliseconds: 200));
+      expect(result, {'ok': 1});
+    });
+  });
+
+  test('stops retrying once the total wait would pass maxRetryWait', () {
+    fakeAsync((async) {
+      final fake = FakeApi(handlers: {
+        '/x': (r) => json({'error': {'code': 'rate_limited', 'message': 'Slow down'}}, 429, {'retry-after': '6'}),
+      });
+      Object? error;
+      api(fake.client).post('/x', {}, maxAttempts: 5).catchError((Object e) {
+        error = e;
+        return <String, Object?>{};
+      });
+      async.elapse(const Duration(seconds: 7));
+      // 6 s waited, another 6 s would make 12 s, over the 10 s default.
+      expect(fake.requests, hasLength(2));
+      expect(error, isA<LanderException>());
+    });
+  });
+
+  test('link_quota_exceeded is not retried', () async {
+    final fake = FakeApi(handlers: {
+      '/x': (r) => json(
+            {'error': {'code': 'link_quota_exceeded', 'message': 'Daily link quota reached'}},
+            429,
+            {'retry-after': '2'},
+          ),
+    });
+    await expectLater(
+      api(fake.client).post('/x', {}, maxAttempts: 3),
+      throwsA(isA<LanderException>()
+          .having((e) => e.code, 'code', 'link_quota_exceeded')
+          .having((e) => e.isRetryable, 'isRetryable', isFalse)),
+    );
+    expect(fake.requests, hasLength(1));
   });
 
   group('Backoff', () {

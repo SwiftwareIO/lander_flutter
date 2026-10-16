@@ -79,8 +79,9 @@ abstract final class Lander {
   ///
   /// On a first launch this may be a deferred link (when the API recovers
   /// one), so it waits for the init request in that case. The launch link is
-  /// delivered once: if [onDeepLink] already delivered it, this returns null,
-  /// and once this has been called [onDeepLink] will not deliver it.
+  /// delivered once: if [onDeepLink] or an earlier call already delivered it,
+  /// this returns null, and once this has been called [onDeepLink] will not
+  /// deliver it.
   static Future<LanderLink?> getInitialLink() => _require('getInitialLink').getInitialLink();
 
   /// Creates a short link from inside the app, for share and invite flows.
@@ -88,6 +89,8 @@ abstract final class Lander {
   /// [path] is the in app route the link opens. [params] values must be
   /// `String`, `num` or `bool`. The slug is always random and the domain is
   /// the project's default domain. Throws [LanderException] on failure.
+  /// Retries wait at most 10 seconds in total, so a long `Retry-After` comes
+  /// back as an exception with [LanderException.retryAfter] instead.
   static Future<LanderShortLink> createLink({
     String path = '/',
     Map<String, Object> params = const {},
@@ -143,7 +146,8 @@ abstract final class Lander {
   /// navigate with it yourself. Use an ID that cannot be guessed (your auth
   /// system's user UUID, not an email address or a counter). Throws
   /// [LanderException] when the request fails after retries, or when the
-  /// install could not be registered yet (`install_not_registered`).
+  /// install could not be registered yet (`install_not_registered`; the
+  /// registration is retried first).
   static Future<LanderLink?> claimHandoff(String userId) {
     final client = _require('claimHandoff');
     final id = userId.trim();

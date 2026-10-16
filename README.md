@@ -67,7 +67,7 @@ _sub = Lander.onDeepLink.listen((link) {
 How delivery works:
 
 - **Buffered.** Links that arrive while nothing listens to `onDeepLink` (cold start, or before your router is ready) are kept and replayed, in order, to the next listener. You can even listen before `initialize`.
-- **The launch link is delivered once.** Either listen to `onDeepLink` only (simplest), or call `getInitialLink()` for the launch link, for example to pick the router's `initialLocation`. Whichever gets it first wins; the other does not see it again, so navigation never happens twice.
+- **The launch link is delivered once.** Either listen to `onDeepLink` only (simplest), or call `getInitialLink()` for the launch link, for example to pick the router's `initialLocation`. Whichever gets it first wins; the other does not see it again, and later `getInitialLink()` calls return `null`, so navigation never happens twice.
 - **Unknown links still arrive.** When the API answers 404 (not a Lander link, for example a page on your own site), or the network is down, you get a `LanderLink` with `isResolved == false` and only `uri` set.
 - **Custom scheme URLs** (`acmeshop://product/123`) are delivered as is, without a network call. `route` treats the host as the first path segment, so this one routes to `/product/123`. The exception is a scheme URL carrying a short link in `lander_link` (the iOS "Continue in app" page builds these): that link is resolved, and `uri` stays the scheme URL.
 - The same URL reported twice within two seconds (some OS versions do this at launch) counts as one open.
@@ -125,7 +125,7 @@ try {
 }
 ```
 
-The slug is random and the domain is the project's default domain. The install ID is sent along so the API rate limits per install (20 links per minute). Requests are retried on network and server errors with the same `Idempotency-Key`, so a retry never creates two links.
+The slug is random and the domain is the project's default domain. The install ID is sent along so the API rate limits per install (20 links per minute). Requests are retried on network and server errors with the same `Idempotency-Key`, so a retry never creates two links. Retries wait at most 10 seconds in total: a longer `Retry-After` (and `link_quota_exceeded`) comes back as a `LanderException` with `retryAfter` instead.
 
 ### Track events
 
@@ -186,6 +186,8 @@ In the Lander dashboard, add your package name and the SHA-256 fingerprints of e
 adb shell pm get-app-links com.acme.shop
 ```
 
+The plugin declares the `INTERNET` permission, so release builds reach the API without adding it yourself.
+
 On first launch the SDK reads the [Play Install Referrer](https://developer.android.com/google/play/installreferrer) once and sends it to the API for deferred deep linking. The plugin adds the `com.android.installreferrer:installreferrer` dependency for you.
 
 ## iOS setup
@@ -232,7 +234,7 @@ The plugin returns `false` from every URL callback so other plugins (for example
 - **What is sent:** the install ID, platform, app version, OS version, SDK version, the URLs that opened the app, the events you track, on Android first launch the Play Install Referrer string, and the user ID you pass to `claimHandoff` (the API stores only a hash of it).
 - **Deferred links never use device fingerprints.** Android uses the Play Install Referrer; iOS uses an explicit tap on the "Continue in app" page or your own sign in. Opt in probabilistic matching compares only OS major version, country and click time, plus, if you also opt in to IP matching, a keyed hash of the network (never the IP address, deleted within 7 hours). The SDK itself sends nothing extra for this.
 - **Storage** lives in Application Support (iOS) and `noBackupFilesDir` (Android), excluded from backups.
-- The iOS privacy manifest (`PrivacyInfo.xcprivacy`) declares a device ID and product interaction data, both for analytics, not linked to the user and not used for tracking. No required reason APIs are used.
+- The iOS privacy manifest (`PrivacyInfo.xcprivacy`) declares a device ID and product interaction data (analytics, not linked to the user), and the user ID passed to `claimHandoff` (app functionality, linked to the user). Nothing is used for tracking. No required reason APIs are used.
 
 ## Local development
 
