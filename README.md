@@ -103,7 +103,7 @@ A deferred deep link is a link someone tapped before the app was installed. Land
   ```
 
   `claimHandoff` returns the link and never also emits it on `onDeepLink`, so navigation happens once. Use an ID that cannot be guessed (your auth system's user UUID, not an email address or a counter).
-- **iOS probabilistic matching (opt in, off by default).** Projects that turn it on get a deferred link on iOS first launch when exactly one recent click (default 2 hours) matches the install's OS major version and country. It arrives with `confidence: probabilistic`, so treat it as a suggestion: for example land on the product page, never sign the user in or apply a credit on the strength of it.
+- **iOS probabilistic matching (opt in, off by default).** Projects that turn it on get a deferred link on iOS first launch when the recent clicks (default 2 hours) that match the install's OS major version and country all point at one link. Projects that also turn on IP matching match clicks from the same network first, which finds far more installs. It arrives with `confidence: probabilistic`, so treat it as a suggestion: for example land on the product page, never sign the user in or apply a credit on the strength of it.
 - **Everything else is `unattributed`:** no deferred link is delivered, and the install is reported as unattributed.
 
 ```dart
@@ -236,7 +236,7 @@ The plugin returns `false` from every URL callback so other plugins (for example
 
 - **Install ID only.** A random UUID v4 per install. No device model, no advertising ID (IDFA or GAID), no device fingerprint, no pasteboard access.
 - **What is sent:** the install ID, platform, app version, OS version, SDK version, the URLs that opened the app, the events you track, on Android first launch the Play Install Referrer string, and the user ID you pass to `claimHandoff` (the API stores only a hash of it).
-- **Deferred links never use fingerprints or IP addresses.** Android uses the Play Install Referrer; iOS uses an explicit tap on the "Continue in app" page or your own sign in. Opt in probabilistic matching compares only OS major version, country and click time.
+- **Deferred links never use device fingerprints.** Android uses the Play Install Referrer; iOS uses an explicit tap on the "Continue in app" page or your own sign in. Opt in probabilistic matching compares only OS major version, country and click time, plus, if you also opt in to IP matching, a keyed hash of the network (never the IP address, deleted within 7 hours). The SDK itself sends nothing extra for this.
 - **Storage** lives in Application Support (iOS) and `noBackupFilesDir` (Android), excluded from backups.
 - The iOS privacy manifest (`PrivacyInfo.xcprivacy`) declares a device ID and product interaction data, both for analytics, not linked to the user and not used for tracking. No required reason APIs are used.
 
