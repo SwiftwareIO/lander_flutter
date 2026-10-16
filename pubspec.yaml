@@ -2,7 +2,15 @@ name: lander_flutter
 description: "Deep linking without the fuss: receive, resolve and create Lander links, and report opens and conversions from Flutter apps."
 version: 0.2.0
 homepage: https://golander.link
-repository: https://github.com/lander/lander/tree/main/sdk/lander_flutter
+repository: https://github.com/SwiftwareIO/lander_flutter
+issue_tracker: https://github.com/SwiftwareIO/lander_flutter/issues
+documentation: https://golander.link/docs
+topics:
+  - deep-linking
+  - deferred-deep-linking
+  - app-links
+  - universal-links
+  - dynamic-links
 
 environment:
   sdk: ^3.10.0

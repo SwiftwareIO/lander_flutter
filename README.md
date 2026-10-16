@@ -13,14 +13,8 @@ Requires Flutter 3.38 or newer, iOS 15+, Android API 24+.
 
 ## Install
 
-The package is not on pub.dev yet. Depend on it from git or a path:
-
-```yaml
-dependencies:
-  lander_flutter:
-    git:
-      url: https://github.com/lander/lander.git
-      path: sdk/lander_flutter
+```bash
+flutter pub add lander_flutter
 ```
 
 ## Usage
@@ -90,7 +84,7 @@ Opens are reported by the API when the SDK resolves the link, so you do not need
 
 ### Deferred deep links
 
-A deferred deep link is a link someone tapped before the app was installed. Lander brings them to the right screen after install wherever that can be done honestly, and labels every result. The full picture, per platform, is in [`docs/DEFERRED.md`](../../docs/DEFERRED.md).
+A deferred deep link is a link someone tapped before the app was installed. Lander brings them to the right screen after install wherever that can be done honestly, and labels every result. The full picture, per platform, is in the [Lander docs](https://golander.link/docs).
 
 - **Android, automatic and deterministic.** The redirector sends the click to the Play Store with a single use token in the install referrer. On first launch the SDK sends the referrer to `POST /v1/sdk/init`, and the link comes back through `getInitialLink` / `onDeepLink` with `isDeferred: true`, `confidence: deterministic` and `method: install_referrer`. Nothing to code.
 - **iOS "Continue in app" page (deterministic).** When the project turns it on, iOS clicks see a small page with an App Store button and an "I already have the app, open it" button. After installing, the user comes back and taps the second button; the app opens on the link's screen with `method: landing_page` (and `isDeferred: true` when the app was installed after the click). If your iOS app has a custom URL scheme, the button uses it, so add the scheme to `Info.plist` (see iOS setup).
@@ -277,4 +271,4 @@ flutter run
 
 ## API
 
-The SDK only talks to the public API documented in `docs/API.md` (`/v1/sdk/init`, `/v1/sdk/resolve`, `/v1/sdk/events`, `/v1/sdk/links`, `/v1/sdk/handoffs/claim`), never to the database. Every request has a 10 second timeout; every write carries an `Idempotency-Key` that stays the same across retries.
+The SDK only talks to Lander's public API (`/v1/sdk/init`, `/v1/sdk/resolve`, `/v1/sdk/events`, `/v1/sdk/links`, `/v1/sdk/handoffs/claim`), never to the database. Every request has a 10 second timeout; every write carries an `Idempotency-Key` that stays the same across retries.
