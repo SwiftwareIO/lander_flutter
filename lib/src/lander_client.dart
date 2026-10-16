@@ -46,6 +46,7 @@ class LanderClient with WidgetsBindingObserver {
   }
 
   static const installIdKey = 'install_id';
+  static const userIdKey = 'user_id';
 
   /// Query parameter of a custom scheme URL carrying the Lander link it
   /// stands for.
@@ -71,6 +72,7 @@ class LanderClient with WidgetsBindingObserver {
   Future<void> _linkChain = Future.value();
   StreamSubscription<String>? _linkSub;
   String? _installId;
+  String? _userId;
   bool _isFirstLaunch = false;
 
   /// Whether the API knows this install (an init succeeded, now or on an
@@ -87,6 +89,9 @@ class LanderClient with WidgetsBindingObserver {
 
   /// The random install ID, once loaded.
   String? get installId => _installId;
+
+  /// The app's ID for the signed in user, from [setUserId], once loaded.
+  String? get userId => _userId;
 
   /// Completes when `POST /v1/sdk/init` has finished (or failed).
   Future<void> get initDone => _initDone.future;
@@ -132,6 +137,7 @@ class LanderClient with WidgetsBindingObserver {
       logger.log('Created install ID $id');
     }
     _installId = id;
+    _userId = await _safe(() => _read(userIdKey), 'read user id');
     _isFirstLaunch = await _safe(() => _read(firstLaunchReportedKey), 'read first launch') != '1';
     _registered = !_isFirstLaunch;
   }
@@ -301,7 +307,7 @@ class LanderClient with WidgetsBindingObserver {
     try {
       final json = await api.post(
         '/v1/sdk/resolve',
-        {'installId': _installId, 'url': target},
+        {'installId': _installId, 'url': target, 'userId': ?_userId},
         idempotencyKey: _uuid.v4(),
         maxAttempts: 2,
       );
@@ -370,6 +376,24 @@ class LanderClient with WidgetsBindingObserver {
     }
   }
 
+  /// Stamps [userId] on the events and link opens recorded from now on, and
+  /// remembers it across launches. Null forgets it (sign out).
+  Future<void> setUserId(String? userId) async {
+    await _ready;
+    if (userId == _userId) return;
+    _userId = userId;
+    if (userId == null) {
+      try {
+        await platform.delete(userIdKey);
+      } catch (e) {
+        logger.log('Storage delete failed for $userIdKey: $e');
+      }
+    } else {
+      await _write(userIdKey, userId);
+    }
+    logger.log(userId == null ? 'Cleared user ID' : 'User ID set');
+  }
+
   Future<void> trackEvent(String name, Map<String, Object?> properties, {String? linkId}) async {
     if (name.isEmpty || name.length > 100) {
       throw ArgumentError.value(name, 'name', 'must be 1 to 100 characters');
@@ -386,11 +410,14 @@ class LanderClient with WidgetsBindingObserver {
       throw ArgumentError.value(properties, 'properties', 'must be JSON encodable: ${e.unsupportedObject}');
     }
     final now = DateTime.now().millisecondsSinceEpoch;
+    // The user at the time of the event, even if it is sent after a sign out.
+    await _ready;
     await events.add({
       'id': _uuid.v4(),
       'type': 'custom',
       'name': name,
       'linkId': ?linkId,
+      'userId': ?_userId,
       'properties': props,
       'occurredAt': DateTime.fromMillisecondsSinceEpoch(now, isUtc: true).toIso8601String(),
     });

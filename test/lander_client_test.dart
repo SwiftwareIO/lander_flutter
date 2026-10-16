@@ -616,6 +616,35 @@ void main() {
       expect(() => c.trackEvent('ok', {'when': DateTime(2026)}), throwsArgumentError);
       expect(() => c.trackEvent('ok', {}, linkId: 'p-123'), throwsArgumentError);
     });
+
+    test('setUserId stamps later events and opens, survives a restart and clears', () async {
+      final platform = FakePlatform();
+      final api = FakeApi();
+      final c1 = client(platform, api);
+      await started(c1);
+      await c1.trackEvent('app_open_before_sign_in', {});
+      await c1.setUserId('user-42');
+      await c1.trackEvent('sign_up', {});
+      platform.links.add('https://acme.golander.link/p-123');
+      await pumpEventQueue();
+      await c1.events.flush();
+      c1.dispose();
+
+      final sent = api.to('/v1/sdk/events').expand((b) => b.body['events'] as List).cast<Map<String, Object?>>().toList();
+      expect(sent.first.containsKey('userId'), isFalse);
+      expect(sent.last['userId'], 'user-42');
+      expect(api.to('/v1/sdk/resolve').single.body['userId'], 'user-42');
+      expect(platform.storage[LanderClient.userIdKey], 'user-42');
+
+      final c2 = client(platform, api);
+      await started(c2);
+      expect(c2.userId, 'user-42');
+      await c2.setUserId(null);
+      expect(c2.userId, isNull);
+      expect(platform.storage.containsKey(LanderClient.userIdKey), isFalse);
+      await c2.trackEvent('after_sign_out', {});
+      expect(c2.events.pending.last.containsKey('userId'), isFalse);
+    });
   });
 
   group('registration', () {

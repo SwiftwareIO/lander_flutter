@@ -17,6 +17,8 @@ class HomeScreen extends StatelessWidget {
     if (userId == null || userId.trim().isEmpty || !context.mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final router = GoRouter.of(context);
+    // Conversions and link opens from now on carry this user ID.
+    await Lander.setUserId(userId);
     try {
       final link = await Lander.claimHandoff(userId);
       if (link == null) {

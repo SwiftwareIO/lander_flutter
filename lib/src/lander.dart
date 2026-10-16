@@ -173,6 +173,28 @@ abstract final class Lander {
     return client.claimHandoff(id);
   }
 
+  /// Ties the events and link opens recorded from now on to one of your users,
+  /// so you can see who converted in the dashboard and in webhooks.
+  ///
+  /// Call it after sign in (and on launch when a user is already signed in),
+  /// and with null on sign out. The ID is remembered across launches, and each
+  /// event keeps the user that was set when it was tracked. Lander stores the
+  /// ID as you send it, so use an ID that does not identify the person on its
+  /// own (your auth system's user UUID, not an email address). Throws
+  /// [ArgumentError] for an ID that is empty or longer than 256 characters
+  /// after trimming.
+  static Future<void> setUserId(String? userId) async {
+    final client = _require('setUserId');
+    final id = userId?.trim();
+    if (id != null && (id.isEmpty || id.length > 256)) {
+      throw ArgumentError.value(userId, 'userId', 'must be 1 to 256 characters');
+    }
+    return client.setUserId(id);
+  }
+
+  /// The user ID from [setUserId], or null when no user is set.
+  static String? get userId => _client?.userId;
+
   /// Records a custom event, for example a signup or a purchase.
   ///
   /// The event is stored on the device first and sent in batches, with

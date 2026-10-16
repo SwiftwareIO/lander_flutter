@@ -225,7 +225,13 @@ void main() {
     test('rejects secret keys and calls before initialize, through the Future', () async {
       native = FakeNative()..install();
       // Calling never throws synchronously; the error is in the Future.
-      final calls = [Lander.trackEvent('x'), Lander.claimHandoff('user_1'), Lander.getInitialLink(), Lander.createLink()];
+      final calls = [
+        Lander.trackEvent('x'),
+        Lander.setUserId('user_1'),
+        Lander.claimHandoff('user_1'),
+        Lander.getInitialLink(),
+        Lander.createLink(),
+      ];
       for (final call in calls) {
         await expectLater(call, throwsStateError);
       }
@@ -277,6 +283,18 @@ void main() {
       await Lander.initialize(apiKey: 'pk_test_DemoPublishableKey000000000000');
       await expectLater(Lander.claimHandoff('  '), throwsArgumentError);
       await expectLater(Lander.claimHandoff('x' * 257), throwsArgumentError);
+    });
+
+    test('setUserId validates and trims the user ID, and null clears it', () async {
+      native = FakeNative()..install();
+      Lander.debugHttpClient = resolvingApi().client;
+      await Lander.initialize(apiKey: 'pk_test_DemoPublishableKey000000000000');
+      await expectLater(Lander.setUserId('  '), throwsArgumentError);
+      await expectLater(Lander.setUserId('x' * 257), throwsArgumentError);
+      await Lander.setUserId(' user_1 ');
+      expect(Lander.userId, 'user_1');
+      await Lander.setUserId(null);
+      expect(Lander.userId, isNull);
     });
   });
 }
