@@ -652,7 +652,8 @@ void main() {
       final c1 = client(platform, api);
       await started(c1);
       await c1.trackEvent('purchase', {});
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      // Finish the failed flush before the next client brings init back online.
+      await c1.events.flush();
       expect(api.to('/v1/sdk/events'), isEmpty, reason: 'install not registered yet');
       expect(c1.events.pending, hasLength(1));
       c1.dispose();
@@ -660,7 +661,7 @@ void main() {
       initUp = true;
       final c2 = client(platform, api);
       await started(c2);
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await c2.events.flush();
       expect(api.to('/v1/sdk/events'), hasLength(1));
       expect(c2.events.pending, isEmpty);
     });
