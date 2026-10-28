@@ -84,7 +84,7 @@ Opens are reported by the API when the SDK resolves the link, so you do not need
 
 ### Deferred deep links
 
-A deferred deep link is a link someone tapped before the app was installed. Lander brings them to the right screen after install wherever that can be done honestly, and labels every result. The full picture, per platform, is in the [Lander docs](https://golander.link/docs).
+A deferred deep link is a link someone tapped before the app was installed. Lander brings them to the right screen after install wherever that can be done honestly, and labels every result. The full picture, per platform, is in the [Lander docs](https://docs.golander.link/docs).
 
 - **Android, automatic and deterministic.** The redirector sends the click to the Play Store with a single use token in the install referrer. On first launch the SDK sends the referrer to `POST /v1/sdk/init`, and the link comes back through `getInitialLink` / `onDeepLink` with `isDeferred: true`, `confidence: deterministic` and `method: install_referrer`. Nothing to code.
 - **iOS "Continue in app" page (deterministic).** When the project turns it on, iOS clicks see a small page with an App Store button and an "I already have the app, open it" button. After installing, the user comes back and taps the second button; the app opens on the link's screen with `method: landing_page` (and `isDeferred: true` when the app was installed after the click). If your iOS app has a custom URL scheme, the button uses it, so add the scheme to `Info.plist` (see iOS setup).
